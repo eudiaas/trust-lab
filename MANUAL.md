@@ -455,26 +455,57 @@ Dos matices que importan:
 
 ### 6.3 Empezar de cero
 
-Si el almacén quedó con material mal encadenado y prefieres remontarlo:
+Se hace **desde la consola**, en `/reset`, y no hace falta tocar la base de
+datos ni tener un clon del repositorio. La página empieza por el inventario de
+lo que hay —artefactos publicados, claves con su subject, documentos— porque
+«vas a perder 7 claves» no ayuda a decidir y ver que una de ellas firma las
+cinco listas, sí.
+
+Dos alcances, y la diferencia es toda la página:
+
+| | **Retirar lo publicado** | **Borrar todo** |
+|---|---|---|
+| Borra | los artefactos emitidos | artefactos, claves y documentos |
+| Conserva | claves y documentos | nada; resiembra `state/` |
+| Reversible | sí: se corrige y se reemite | **no** |
+| Frase | `RETIRAR` | `BORRAR TODO` |
+
+**Casi siempre el que hace falta es el primero.** Si una lista salió con un
+ancla que no encadena, lo que hay que rehacer es lo emitido, no las claves: se
+retira, se corrige el estado y se reemite. El publisher devuelve 404 mientras
+tanto.
+
+La frase se escribe a mano y se comprueba en el servidor. No es teatro: aquí no
+hay papelera, y es lo único que separa esto de un clic accidental.
+
+⚠ **«Borrar todo» es irreversible**: las claves privadas están cifradas en ese
+almacén y en ningún otro sitio, así que lo que ya hubieras entregado a alguien
+deja de poder reemitirse igual. Y el resembrado **devuelve las anclas de ejemplo
+sin clave privada**, que hay que volver a quitar (§5.3) o vuelves al mismo
+problema.
+
+<details>
+<summary>Si prefieres hacerlo por fuera</summary>
+
+En un **clon local con almacén de fichero** —el caso del CLI sin `DATABASE_URL`—
+el estado son ficheros:
 
 ```bash
-# local (almacén de fichero): las claves y lo emitido viven en out/
-rm -rf out/
-git checkout state/          # devuelve los documentos a su estado sembrado
+rm -rf out/           # claves y artefactos
+git checkout state/   # documentos, a su estado sembrado
+```
 
-# Railway (Postgres): desde la consola de la base de datos
+En **Railway**, la equivalencia es la pestaña *Data* del servicio Postgres:
+
+```sql
 DROP TABLE IF EXISTS artifacts, keys, docs;
 ```
 
-Al arrancar contra una base vacía, el servicio vuelve a sembrar `state/`.
+Al arrancar contra una base vacía, el servicio vuelve a sembrar `state/`. Las
+dos vías hacen lo mismo que «Borrar todo», sin inventario previo ni frase de
+confirmación.
 
-⚠ **Borrar `keys` es irreversible**: las privadas están cifradas ahí y en
-ningún otro sitio. Lo que ya hubieras entregado a alguien deja de poder
-reemitirse igual. Y recuerda que **las listas sembradas traen anclas
-inservibles**: después de remontar hay que quitarlas (§5.3), o volverás a
-tener el mismo problema.
-
----
+</details>
 
 ## 7. Descargar el material
 
@@ -539,6 +570,7 @@ descubre siguiendo las listas.
 | `/rps/:id` | servicios, finalidades, emisión y descarga de sus certificados |
 | `/status` | posiciones de revocación |
 | `/graph` | el grafo dibujado y las cadenas que no llegan a ningún ancla |
+| `/reset` | inventario del almacén y los dos reinicios |
 | `/docs/:id` | editor JSON de cualquier documento, con validación al guardar |
 
 ### Comandos del CLI

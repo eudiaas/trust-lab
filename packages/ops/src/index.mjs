@@ -525,3 +525,89 @@ export async function deleteWrprc(store, { id }) {
   await store.artifacts.delete('wrprc', id);
   return { deleted: id, sequence: a.sequence };
 }
+
+// ---------------------------------------------------------------------------
+// Reinicio
+//
+// Existe porque la alternativa era pedirle al operador que abriera la pestana
+// de datos de Railway y escribiera un DROP TABLE. Eso no es mas seguro por ser
+// mas incomodo: es igual de destructivo, sin inventario previo, sin frase de
+// confirmacion y sin resembrado.
+//
+// El inventario ANTES de borrar es la pieza que importa. «Vas a perder 7
+// claves» no dice nada; «vas a perder tl-signer, que firma las cinco listas»
+// si.
+// ---------------------------------------------------------------------------
+
+const PUBLICABLE = { 'etsi-tl-xml': 'lists', 'lote-json': 'lote', 'token-status-list': 'status' };
+
+/** Que se llevaria por delante un reinicio, con nombres. */
+export async function resetPreview(store) {
+  const docs = await store.docs.list('*');
+  const publicado = [];
+  const wrprc = [];
+  for (const doc of docs) {
+    const kind = PUBLICABLE[doc.kind];
+    if (kind) {
+      const a = await store.artifacts.latest(kind, doc.id);
+      if (a) publicado.push({ kind, id: doc.id, sequence: a.sequence, url: doc.url ?? null });
+      continue;
+    }
+    for (const svc of doc.walletRelyingParty?.services ?? []) {
+      for (const u of svc.intendedUses ?? []) {
+        const id = wrprcArtifactId(doc.id, svc.serviceIdentifier, u.intendedUseIdentifier);
+        if (await store.artifacts.latest('wrprc', id)) wrprc.push(id);
+      }
+    }
+  }
+  const keys = [];
+  const raw = store.rawKeys ?? store.keys;
+  for (const name of await store.keys.list()) {
+    const doc = await raw.get(name).catch(() => null);
+    keys.push({ name, subject: doc?.subject ?? null });
+  }
+  return {
+    publicado, wrprc, keys,
+    docs: docs.map((d) => ({ id: d.id, kind: d.kind, esRp: !!d.walletRelyingParty })),
+  };
+}
+
+/**
+ * Reinicia el almacen.
+ *
+ * `scope: 'publicado'` retira todo lo emitido y deja claves y documentos: es el
+ * reinicio reversible, el que sirve cuando algo salio mal encadenado y hay que
+ * reemitirlo todo. `scope: 'todo'` borra ademas claves y documentos, y vuelve a
+ * sembrar `state/` — eso si es irreversible: las privadas estan cifradas ahi y
+ * en ningun otro sitio.
+ *
+ * Se enumera y se borra elemento a elemento en vez de vaciar tablas: la
+ * operacion tiene que funcionar igual sobre los tres adaptadores, y solo uno
+ * tiene tablas.
+ */
+export async function reset(store, { scope = 'publicado', confirm, root } = {}) {
+  const FRASE = { publicado: 'RETIRAR', todo: 'BORRAR TODO' }[scope];
+  if (!FRASE) throw new OpError(`alcance desconocido: ${scope}`, ['usa "publicado" o "todo"']);
+  if (confirm !== FRASE) {
+    throw new OpError('la frase de confirmacion no coincide', [`hay que escribir exactamente: ${FRASE}`]);
+  }
+
+  const previo = await resetPreview(store);
+  for (const a of previo.publicado) await store.artifacts.delete(a.kind, a.id);
+  for (const id of previo.wrprc) await store.artifacts.delete('wrprc', id);
+  const retirados = previo.publicado.length + previo.wrprc.length;
+
+  if (scope === 'publicado') {
+    return { scope, retirados, claves: 0, documentos: 0, sembrados: [] };
+  }
+
+  for (const k of previo.keys) await store.keys.delete(k.name);
+  for (const d of previo.docs) await store.docs.delete('*', d.id);
+
+  let sembrados = [];
+  if (root) {
+    const { seedIfEmpty } = await import('../../store/src/index.mjs');
+    sembrados = (await seedIfEmpty(store, root)).seeded;
+  }
+  return { scope, retirados, claves: previo.keys.length, documentos: previo.docs.length, sembrados };
+}

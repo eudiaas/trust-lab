@@ -208,6 +208,10 @@ const server = createServer(async (req, res) => {
       return send(res, 200, views.graphPage({ svg: graphSvg(g, { dangling: roto }), graph: g, dangling: roto, flash }));
     }
 
+    if (path === '/reset' && req.method === 'GET') {
+      return send(res, 200, views.resetPage({ preview: await ops.resetPreview(store), flash }));
+    }
+
     if (parts[0] === 'download' && req.method === 'GET') {
       let out;
       try {
@@ -256,6 +260,16 @@ const server = createServer(async (req, res) => {
       return run(res, '/keys', () =>
         ops.mintTlso(store, crypto, { name: form.get('name'), schemeId: form.get('scheme') }),
         (r) => `Firmante ${r.name} emitido: ${r.subject}`);
+    }
+
+    if (path === '/reset') {
+      return run(res, '/reset', () =>
+        ops.reset(store, { scope: form.get('scope'), confirm: form.get('confirm'), root: ROOT }),
+        (r) =>
+          r.scope === 'publicado'
+            ? `Retirados ${r.retirados} artefacto(s). Las claves y los documentos siguen ahi: reemite cuando este corregido.`
+            : `Borrado todo: ${r.retirados} artefacto(s), ${r.claves} clave(s), ${r.documentos} documento(s).` +
+              (r.sembrados.length ? ` Resembrados ${r.sembrados.length} documento(s) desde state/.` : ''));
     }
 
     // ---- borrado ----

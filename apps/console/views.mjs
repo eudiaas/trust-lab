@@ -74,6 +74,7 @@ export function layout({ title, path, body, flash }) {
     ['/rps', 'Relying parties'],
     ['/status', 'Revocacion'],
     ['/graph', 'Dependencias'],
+    ['/reset', 'Reiniciar'],
   ]
     .map(([href, label]) => `<a href="${href}" class="${path === href ? 'on' : ''}">${label}</a>`)
     .join('');
@@ -501,5 +502,74 @@ export function graphPage({ svg, graph, dangling, flash }) {
     bien y que una wallet rechaza.</p>
     <p class="meta">${graph.nodes.length} nodos · ${graph.edges.length} aristas ·
     <a href="/graph.svg">descargar SVG</a></p>`,
+  });
+}
+
+/**
+ * Reinicio. Dos alcances, y la diferencia entre ellos es toda la pagina.
+ *
+ * El inventario va ANTES del formulario a proposito: «vas a perder 7 claves»
+ * no ayuda a decidir; ver que una de ellas es la que firma las cinco listas,
+ * si. La frase escrita a mano no es teatro — es lo unico que distingue este
+ * boton de un clic accidental, porque aqui no hay papelera.
+ */
+export function resetPage({ preview, flash }) {
+  const total = preview.publicado.length + preview.wrprc.length;
+  const lista = (items) =>
+    items.length
+      ? `<ul class="blockers">${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>`
+      : '<div class="meta">nada</div>';
+
+  return layout({
+    title: 'Reiniciar',
+    path: '/reset', flash,
+    body: `<h1>Reiniciar el laboratorio</h1>
+    <p class="lead">Dos alcances. El primero es reversible y casi siempre es el que hace falta;
+    el segundo no lo es.</p>
+
+    <div class="card">
+      <h3>Inventario actual</h3>
+      <div class="meta">Esto es lo que hay ahora mismo en el almacen.</div>
+      <p class="meta"><b>Publicado (${total})</b></p>
+      ${lista([
+        ...preview.publicado.map((a) => `${a.id} #${a.sequence}${a.url ? ` — ${a.url}` : ''}`),
+        ...preview.wrprc.map((id) => `WRPRC ${id}`),
+      ])}
+      <p class="meta"><b>Claves (${preview.keys.length})</b> — se pierden con «borrar todo»,
+      y no hay copia en ningun otro sitio</p>
+      ${lista(preview.keys.map((k) => `${k.name}${k.subject ? ` — ${k.subject}` : ''}`))}
+      <p class="meta"><b>Documentos (${preview.docs.length})</b></p>
+      ${lista(preview.docs.map((d) => `${d.id}${d.esRp ? ' (relying party)' : ''}`))}
+    </div>
+
+    <div class="card">
+      <h3>Retirar lo publicado</h3>
+      <div class="meta">Borra los ${total} artefacto(s) emitidos. <strong>Conserva claves y
+      documentos</strong>, asi que se puede corregir lo que estuviera mal y reemitir sin volver
+      a montar nada. El publisher devolvera 404 hasta que reemitas.</div>
+      <form class="inline" method="post" action="/reset">
+        <input type="hidden" name="scope" value="publicado">
+        <input type="text" name="confirm" placeholder="escribe RETIRAR" size="22" required
+               autocomplete="off" spellcheck="false">
+        <button class="danger">Retirar lo publicado</button>
+      </form>
+    </div>
+
+    <div class="card" style="border-color:var(--bad)">
+      <h3>Borrar todo</h3>
+      <div class="meta"><strong>Irreversible.</strong> Borra artefactos, las
+      ${preview.keys.length} clave(s) y los ${preview.docs.length} documento(s), y vuelve a sembrar
+      <span class="mono">state/</span>. Las claves privadas estan cifradas en este almacen y en
+      ningun otro sitio: lo que ya hayas entregado a alguien deja de poder reemitirse igual.
+      Ademas, el sembrado devuelve las <strong>anclas de ejemplo sin clave privada</strong>, que
+      hay que volver a quitar.</div>
+      <form class="inline" method="post" action="/reset"
+        onsubmit="return confirm('Se borran las claves privadas. No hay copia. ¿Seguro?')">
+        <input type="hidden" name="scope" value="todo">
+        <input type="text" name="confirm" placeholder="escribe BORRAR TODO" size="22" required
+               autocomplete="off" spellcheck="false">
+        <button class="danger">Borrar todo</button>
+      </form>
+    </div>`,
   });
 }

@@ -1,0 +1,19 @@
+{
+  "id": "av-lab",
+  "kind": "etsi-tl-xml",
+  "profile": "ageVerification",
+  "url": "https://trust-lab.espuni.com/lists/av-lab.xml",
+  "schemeOperatorName": "espuni Trust Lab",
+  "schemeName": "Trust Lab AV Trusted List (TEST — NOT A REAL SCHEME)",
+  "territory": "ES",
+  "statusDeterminationApproach": "http://trust.tech.ec.europa.eu/lists/age-verification/StatusDetn/EU",
+  "sequenceNumber": 1,
+  "validityDays": 30,
+  "providers": [
+    {
+      "name": "Lab AV Attestation Provider",
+      "serviceName": "Lab AV Attestation Provider — AV attestation issuance",
+      "certPem": "-----BEGIN CERTIFICATE-----\nMIIB6TCCAY+gAwIBAgIINgHciCYPC9YwCgYIKoZIzj0EAwIwSTELMAkGA1UEBhMC\nRVMxJDAiBgNVBAoTG0xhYiBBViBBdHRlc3RhdGlvbiBQcm92aWRlcjEUMBIGA1UE\nAxMLTGFiIEFWIElBQ0EwHhcNMjYwOTA2MTIxOTQzWhcNMjcwOTA3MTIxOTQzWjBK\nMQswCQYDVQQGEwJFUzEkMCIGA1UEChMbTGFiIEFWIEF0dGVzdGF0aW9uIFByb3Zp\nZGVyMRUwEwYDVQQDEwxMYWIgQVYgRFMgMDEwWTATBgcqhkjOPQIBBggqhkjOPQMB\nBwNCAAR5EP9mcUSfnapgl7scI4RzRuGBR7a6BUtE137X3+QXdarHon57v4LGPkYf\nwNyD5ILDSTlQvj4sJk2LJjX4D3VMo2AwXjAMBgNVHRMBAf8EAjAAMA4GA1UdDwEB\n/wQEAwIHgDAdBgNVHQ4EFgQUaAqTIbYFOZccEsbcZtmWkuBrPtMwHwYDVR0jBBgw\nFoAUI+U869Qs1H98HpKJGaC0mI2fsDwwCgYIKoZIzj0EAwIDSAAwRQIhAPa5eG2D\noGpA7n4h1wjOGcutVLibRRPjK2xBqlEaf2NtAiAXb9JkkgDqeCJ35PhJJ8bQyl+M\nsz68kHgt3JkAg2VOcw==\n-----END CERTIFICATE-----"
+    }
+  ]
+}

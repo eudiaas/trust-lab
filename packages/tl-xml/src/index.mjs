@@ -39,19 +39,34 @@ export function buildTrustedListXml(state, profile, now = new Date()) {
   const next = iso(now.getTime() + (state.validityDays ?? 30) * 86_400_000);
   const recognized = profile.serviceStatuses[0];
   const paa = profile.serviceTypes[0];
+  const lang = state.lang ?? 'en';
+  const ml = (tag, v) => `<${tag}><Name xml:lang="${lang}">${esc(v)}</Name></${tag}>`;
+  const uris = (tag, list) =>
+    `<${tag}>${list.map((u) => `<URI xml:lang="${lang}">${esc(u)}</URI>`).join('')}</${tag}>`;
+
+  // 5.3.5 / 5.4.3: dirección postal + electrónica, ambas obligatorias.
+  const address = (a) => `<PostalAddresses><PostalAddress xml:lang="${lang}">` +
+    `<StreetAddress>${esc(a.street)}</StreetAddress>` +
+    `<Locality>${esc(a.locality)}</Locality>` +
+    `<PostalCode>${esc(a.postalCode)}</PostalCode>` +
+    `<CountryName>${esc(a.country)}</CountryName>` +
+    `</PostalAddress></PostalAddresses>` +
+    `<ElectronicAddress>${a.uris.map((u) => `<URI xml:lang="${lang}">${esc(u)}</URI>`).join('')}</ElectronicAddress>`;
 
   const providers = state.providers
-    .map(
-      (p) => `
+    .map((p) => `
    <TrustServiceProvider>
     <TSPInformation>
-     <TSPName><Name xml:lang="en">${esc(p.name)}</Name></TSPName>
+     ${ml('TSPName', p.name)}
+     ${ml('TSPTradeName', p.tradeName ?? p.name)}
+     <TSPAddress>${address(p.address ?? state.address)}</TSPAddress>
+     ${uris('TSPInformationURI', p.informationUri ?? [state.schemeInformationUri[0]])}
     </TSPInformation>
     <TSPServices>
      <TSPService>
       <ServiceInformation>
        <ServiceTypeIdentifier>${paa}</ServiceTypeIdentifier>
-       <ServiceName><Name xml:lang="en">${esc(p.serviceName)}</Name></ServiceName>
+       ${ml('ServiceName', p.serviceName)}
        <ServiceDigitalIdentity>
         <DigitalId><X509Certificate>${pemToBase64Der(p.certPem)}</X509Certificate></DigitalId>
        </ServiceDigitalIdentity>
@@ -60,20 +75,28 @@ export function buildTrustedListXml(state, profile, now = new Date()) {
       </ServiceInformation>
      </TSPService>
     </TSPServices>
-   </TrustServiceProvider>`,
-    )
+   </TrustServiceProvider>`)
     .join('');
 
+  // El orden de los hijos de SchemeInformation NO es libre: lo fija el schema
+  // XML del anexo C. Esta secuencia es la de la tabla de la cláusula 5.
   return `<?xml version="1.0" encoding="UTF-8"?>
 <TrustServiceStatusList xmlns="${NS}" Id="TL" TSLTag="${TSL_TAG}">
  <SchemeInformation>
   <TSLVersionIdentifier>6</TSLVersionIdentifier>
   <TSLSequenceNumber>${state.sequenceNumber}</TSLSequenceNumber>
   <TSLType>${profile.tslType}</TSLType>
-  <SchemeOperatorName><Name xml:lang="en">${esc(state.schemeOperatorName)}</Name></SchemeOperatorName>
-  <SchemeName><Name xml:lang="en">${esc(state.schemeName)}</Name></SchemeName>
-  <SchemeTerritory>${esc(state.territory ?? 'EU')}</SchemeTerritory>
+  ${ml('SchemeOperatorName', state.schemeOperatorName)}
+  <SchemeOperatorAddress>${address(state.address)}</SchemeOperatorAddress>
+  ${ml('SchemeName', state.schemeName)}
+  ${uris('SchemeInformationURI', state.schemeInformationUri)}
   <StatusDeterminationApproach>${state.statusDeterminationApproach}</StatusDeterminationApproach>
+  ${uris('SchemeTypeCommunityRules', state.schemeTypeCommunityRules)}
+  <SchemeTerritory>${esc(state.territory)}</SchemeTerritory>
+  <PolicyOrLegalnotice>${state.legalNotice
+    .map((n) => `<TSLLegalNotice xml:lang="${lang}">${esc(n)}</TSLLegalNotice>`)
+    .join('')}</PolicyOrLegalnotice>
+  <HistoricalInformationPeriod>${state.historicalInformationPeriodDays ?? 65535}</HistoricalInformationPeriod>
   <ListIssueDateTime>${issued}</ListIssueDateTime>
   <NextUpdate><dateTime>${next}</dateTime></NextUpdate>
  </SchemeInformation>
@@ -83,12 +106,23 @@ export function buildTrustedListXml(state, profile, now = new Date()) {
 }
 
 /**
- * Firma XAdES enveloped sobre el elemento raíz (Id="TL").
+ * Firma XAdES enveloped conforme al **Annex B (normativo) de TS 119 612 v2.3.1**.
+ *
+ * B.1.0 impone cuatro reglas que no son las que xadesjs hace por defecto:
+ *   1) firma enveloped;
+ *   2) un ds:Reference al TrustServiceStatusList con UN solo ds:Transforms que
+ *      contenga DOS ds:Transform: enveloped-signature y **exclusive** c14n;
+ *   3) ds:CanonicalizationMethod = exclusive c14n;
+ *   4) puede llevar más referencias (ahí entran las propiedades XAdES).
+ * Y B.1.1 exige `xades:SigningCertificateV2` — no la V1, que es lo que emite
+ * xadesjs si le pasas `signingCertificate`.
  *
  * El certificado del firmante va en ds:KeyInfo/X509Data, que es de donde
  * @owf/eudi-tl —y por tanto EUDIPLO y el camino ZK de espuni— lo saca para
  * comprobarlo contra el ancla pineada.
  */
+export const EXC_C14N = 'http://www.w3.org/2001/10/xml-exc-c14n#';
+
 export async function signTrustedListXml(xml, signer, crypto) {
   XAdES.Application.setEngine('NodeJS', crypto);
   setNodeDependencies({ DOMParser, XMLSerializer, DOMImplementation });
@@ -97,10 +131,43 @@ export async function signTrustedListXml(xml, signer, crypto) {
   const signed = new XAdES.SignedXml();
   const chain = signer.certificateChain.map(pemToBase64Der);
 
+  // B.1.0 regla 3: xadesjs pone c14n inclusiva por defecto y no hay opción
+  // para cambiarlo, así que se fija en el objeto antes de firmar.
+  signed.XmlSignature.SignedInfo.CanonicalizationMethod.Algorithm = EXC_C14N;
+
   await signed.Sign({ name: 'ECDSA', hash: 'SHA-256' }, signer.cryptoKey, doc, {
-    references: [{ id: 'r0', uri: '#TL', hash: 'SHA-256', transforms: ['enveloped', 'c14n'] }],
+    // B.1.0 regla 2: enveloped + exclusive c14n, en ese orden.
+    references: [{ id: 'r0', uri: '#TL', hash: 'SHA-256', transforms: ['enveloped', 'exc-c14n'] }],
     x509: chain,
-    signingCertificate: chain[0],
+    signingCertificateV2: chain[0],   // B.1.1
+    signingTime: {},
   });
   return signed.toString();
+}
+
+/**
+ * Comprueba el Annex B sobre el XML ya firmado. Es la norma convertida en test:
+ * si xadesjs cambia un default, esto lo caza antes que una wallet.
+ */
+export function assertAnnexB(signedXml) {
+  const problems = [];
+  const sig = signedXml.slice(signedXml.indexOf('<ds:Signature'));
+  const canon = /<ds:CanonicalizationMethod Algorithm="([^"]+)"/.exec(sig)?.[1];
+  if (canon !== EXC_C14N) problems.push(`B.1.0(3): CanonicalizationMethod es ${canon}, debe ser exclusive c14n`);
+
+  const transforms = /<ds:Reference[^>]*URI="#TL"[^>]*>\s*<ds:Transforms>([\s\S]*?)<\/ds:Transforms>/.exec(sig);
+  if (!transforms) problems.push('B.1.0(2): no hay ds:Reference a #TL con ds:Transforms');
+  else {
+    const algs = [...transforms[1].matchAll(/Algorithm="([^"]+)"/g)].map((m) => m[1]);
+    if (algs.length !== 2) problems.push(`B.1.0(2b): ${algs.length} transforms, deben ser 2`);
+    if (algs[0] !== 'http://www.w3.org/2000/09/xmldsig#enveloped-signature')
+      problems.push(`B.1.0(2b): la 1ª transform debe ser enveloped-signature, es ${algs[0]}`);
+    if (algs[1] !== EXC_C14N)
+      problems.push(`B.1.0(2b): la 2ª transform debe ser exclusive c14n, es ${algs[1]}`);
+  }
+
+  if (!/<xades:SigningCertificateV2>/.test(sig))
+    problems.push('B.1.1: falta xades:SigningCertificateV2 (¿se emitió la V1?)');
+
+  return problems;
 }

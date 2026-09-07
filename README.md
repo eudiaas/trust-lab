@@ -35,11 +35,29 @@ camino ZK. Si pasa aquí, la aceptan los dos.
 | Pieza | Estado |
 |---|---|
 | CA + hojas (P-256, SKI/AKI/CRL DP, DN completo con país) | ✅ `packages/ca` |
-| Trusted List XML ETSI TS 119 612 + firma XAdES | ✅ `packages/tl-xml` — verificada con `@owf/eudi-tl` |
+| Trusted List XML ETSI TS 119 612 v2.3.1 + firma XAdES | ✅ `packages/tl-xml` — Annex B + verificada con `@owf/eudi-tl` |
+| Certificado del TLSO conforme a la cláusula 5.7.1 | ✅ `mintTlSigner` + `assertTlsoProfile` |
 | Listas LoTE (PID providers, wallet providers, Access CAs) | ⬜ sobre `@owf/eudi-lote` |
 | Registration certificates (WRPRC) | ⬜ sobre `@owf/eudi-wrprc` (v1.2.1) |
 | Status lists (revocación) | ⬜ sobre `@owf/token-status-list` |
 | Firma de CSR | ⬜ solo si hace falta dar certs a terceros sin exportar claves |
+
+## La norma, convertida en test
+
+Dos comprobaciones corren en cada `build-list` y **abortan la emisión** si fallan:
+
+- `assertAnnexB(xml)` — Annex B.1.0/B.1.1 de TS 119 612: firma enveloped, un
+  `ds:Transforms` con enveloped-signature + **exclusive** c14n,
+  `CanonicalizationMethod` exclusiva, y `xades:SigningCertificateV2` (no la V1).
+  Ninguna de las cuatro es el default de xadesjs: las cuatro estaban mal en el
+  primer intento.
+- `assertTlsoProfile(cert, state)` — cláusula 5.7.1: `C`/`O` del Subject
+  coincidiendo con Scheme Territory y Scheme operator name, `CA=false`,
+  KeyUsage limitado a digitalSignature/nonRepudiation y EKU
+  `id-tsl-kp-tslSigning` (0.4.0.2231.3.0).
+
+No son decorativas: firmar la lista con una CA normal las dispara y la emisión
+se para.
 
 ## Aviso
 

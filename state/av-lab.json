@@ -3,11 +3,32 @@
   "kind": "etsi-tl-xml",
   "profile": "ageVerification",
   "url": "https://trust-lab.espuni.com/lists/av-lab.xml",
+  "lang": "en",
   "schemeOperatorName": "espuni Trust Lab",
-  "schemeName": "Trust Lab AV Trusted List (TEST — NOT A REAL SCHEME)",
+  "schemeName": "ES: Trust Lab AV Trusted List (TEST — NOT A REAL SCHEME)",
   "territory": "ES",
+  "address": {
+    "street": "Calle de Prueba 1",
+    "locality": "Madrid",
+    "postalCode": "28001",
+    "country": "ES",
+    "uris": [
+      "mailto:trust-lab@espuni.com",
+      "https://trust-lab.espuni.com"
+    ]
+  },
+  "schemeInformationUri": [
+    "https://trust-lab.espuni.com/about"
+  ],
+  "schemeTypeCommunityRules": [
+    "https://trust-lab.espuni.com/rules"
+  ],
   "statusDeterminationApproach": "http://trust.tech.ec.europa.eu/lists/age-verification/StatusDetn/EU",
-  "sequenceNumber": 1,
+  "legalNotice": [
+    "Lista de pruebas emitida por espuni Trust Lab. No tiene valor legal y no acredita a ningún proveedor. Solo para probar el marco de confianza en entornos de test."
+  ],
+  "historicalInformationPeriodDays": 65535,
+  "sequenceNumber": 4,
   "validityDays": 30,
   "providers": [
     {

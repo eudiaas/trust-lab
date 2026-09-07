@@ -6,9 +6,9 @@ import { dirname, join } from 'node:path';
 import { Crypto } from '@peculiar/webcrypto';
 import { cryptoProvider } from '@peculiar/x509';
 import { TrustedListProfiles, loadTrustedList, getTrustAnchors } from '@owf/eudi-tl';
-import { mintCa, mintLeaf } from '../../packages/ca/src/index.mjs';
+import { mintCa, mintLeaf, mintTlSigner, assertTlsoProfile } from '../../packages/ca/src/index.mjs';
 import { inMemorySigner } from '../../packages/signer/src/index.mjs';
-import { buildTrustedListXml, signTrustedListXml } from '../../packages/tl-xml/src/index.mjs';
+import { buildTrustedListXml, signTrustedListXml, assertAnnexB } from '../../packages/tl-xml/src/index.mjs';
 
 const crypto = new Crypto();
 // @peculiar/x509 mantiene su motor en un registro global: la capa impura (este
@@ -36,6 +36,27 @@ const cmds = {
     const ca = await mintCa(crypto, { subject });
     await exportKeyChain(name, ca);
     console.log(`CA ${name}: ${ca.cert.subject}`);
+  },
+
+  // trustlab mint-tl-signer <nombre> <estado>
+  //   El DN sale del estado de la lista: la cláusula 5.7.1 exige que Subject C
+  //   y O coincidan con Scheme Territory y Scheme operator name.
+  async 'mint-tl-signer'([name, stateId]) {
+    const state = await readJson(join(ROOT, `state/${stateId}.json`));
+    const tlso = await mintTlSigner(crypto, {
+      schemeOperatorName: state.schemeOperatorName,
+      territory: state.territory,
+      commonName: `${state.schemeOperatorName} TL Signer`,
+    });
+    const problems = assertTlsoProfile(tlso.pem, state);
+    if (problems.length) {
+      console.error('el certificado no cumple 5.7.1:');
+      for (const p of problems) console.error('  · ' + p);
+      process.exit(1);
+    }
+    await exportKeyChain(name, tlso);
+    console.log(`TLSO ${name}: ${tlso.cert.subject}`);
+    console.log('  perfil 5.7.1 (TS 119 612) · OK');
   },
 
   // trustlab mint-leaf <nombre-ca> <nombre-hoja> "<DN>"
@@ -71,11 +92,25 @@ const cmds = {
     const key = await crypto.subtle.importKey('jwk', stored.key,
       { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']);
 
+    const tlsoProblems = assertTlsoProfile(stored.crt[0], state);
+    if (tlsoProblems.length) {
+      console.error('el firmante no cumple el perfil TLSO de la cláusula 5.7.1:');
+      for (const p of tlsoProblems) console.error('  · ' + p);
+      process.exit(1);
+    }
+
     state.sequenceNumber += 1;                       // contrato 3: estado explícito
     const profile = TrustedListProfiles[state.profile];
     const xml = buildTrustedListXml(state, profile);
     const signer = inMemorySigner(key, stored.crt, crypto);
     const signed = await signTrustedListXml(xml, signer, crypto);
+
+    const annexB = assertAnnexB(signed);
+    if (annexB.length) {
+      console.error('la firma NO cumple el Annex B de TS 119 612:');
+      for (const p of annexB) console.error('  · ' + p);
+      process.exit(1);
+    }
 
     await mkdir(join(ROOT, 'out/lists'), { recursive: true });
     const outPath = join(ROOT, `out/lists/${stateId}.xml`);
@@ -90,6 +125,7 @@ const cmds = {
     const tl = await loadTrustedList(signed, { trustAnchors: [anchorDer] });
     const anchors = getTrustAnchors(tl, { serviceTypes: profile.serviceTypes });
     console.log(`lista ${stateId} #${state.sequenceNumber} → ${outPath}`);
+    console.log(`  Annex B (TS 119 612) · OK`);
     console.log(`  verificada con @owf/eudi-tl · nextUpdate ${tl.nextUpdate} · ${anchors.length} ancla(s)`);
     console.log(`  publicar en: ${state.url}`);
   },

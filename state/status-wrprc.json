@@ -5,7 +5,7 @@
   "bits": 1,
   "size": 1024,
   "expiresInDays": 30,
-  "sequenceNumber": 2,
+  "sequenceNumber": 3,
   "entries": {
     "7": {
       "status": "invalid",

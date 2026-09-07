@@ -66,16 +66,26 @@ export function fileStore({ root, artifactExt = EXT } = {}) {
       // En fichero solo vive LA ULTIMA emision, y el historial lo lleva git.
       // Es la asimetria deliberada con el almacen SQL, que si guarda todas las
       // versiones porque alli no hay git detras.
-      async put({ kind, id, body }) {
+      async put({ kind, id, body, sequence, contentType, nextUpdate }) {
         const ext = artifactExt[kind] ?? 'txt';
         const path = artifactPath(kind, id, ext);
         await writeFileEnsuring(path, body);
-        return { kind, id, path };
+        // Los metadatos van a un `.meta.json` al lado: el publisher los
+        // necesita (Content-Type, caducidad) y reparsear el artefacto para
+        // deducirlos seria adivinar lo que ya sabiamos al emitirlo.
+        await writeFileEnsuring(
+          `${path}.meta.json`,
+          JSON.stringify({ kind, id, sequence, contentType, nextUpdate }, null, 2) + '\n',
+        );
+        return { kind, id, path, sequence, contentType, nextUpdate };
       },
       async latest(kind, id) {
         const ext = artifactExt[kind] ?? 'txt';
-        const body = await readFile(artifactPath(kind, id, ext), 'utf8').catch(() => null);
-        return body === null ? null : { kind, id, body };
+        const path = artifactPath(kind, id, ext);
+        const body = await readFile(path, 'utf8').catch(() => null);
+        if (body === null) return null;
+        const meta = (await readJson(`${path}.meta.json`)) ?? {};
+        return { kind, id, body, ...meta };
       },
       async get(kind, id) {
         return this.latest(kind, id);

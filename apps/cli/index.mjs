@@ -250,6 +250,7 @@ const cmds = {
     const artifact = await store.artifacts.put({
       kind: 'status', id: stateId, sequence: state.sequenceNumber,
       contentType: 'application/statuslist+jwt', body: jwt,
+      nextUpdate: new Date(Date.now() + (state.expiresInDays ?? 30) * 86400000).toISOString(),
     });
     await saveDoc(stateId, state);
     const outPath = artifact.path ?? `${store.kind}:status/${stateId}#${state.sequenceNumber}`;
@@ -306,14 +307,18 @@ const cmds = {
     const signer = inMemorySigner(key, stored.crt, crypto);
     const jws = await signLoteCompact(lote, signer, `${signerName}-${state.sequenceNumber}`);
 
+    // Igual que en la lista XML: se verifica antes de guardar, así que nunca
+    // se publica un artefacto que no valida.
+    const check = await verifyLoteCompact(jws, stored.crt[0]);
+
     const artifact = await store.artifacts.put({
       kind: 'lote', id: stateId, sequence: state.sequenceNumber,
       contentType: 'application/jwt', body: jws,
+      nextUpdate: check.nextUpdate,
     });
     await saveDoc(stateId, state);
     const outPath = artifact.path ?? `${store.kind}:lote/${stateId}#${state.sequenceNumber}`;
 
-    const check = await verifyLoteCompact(jws, stored.crt[0]);
     const profile = LIST_PROFILES[state.loteType];
     console.log(`lista ${stateId} #${state.sequenceNumber} → ${outPath}`);
     console.log(`  perfil ${state.loteType} · tipos de servicio ${profile.svc}/{Issuance,Revocation}`);
@@ -361,13 +366,6 @@ const cmds = {
       process.exit(1);
     }
 
-    const artifact = await store.artifacts.put({
-      kind: 'lists', id: stateId, sequence: state.sequenceNumber,
-      contentType: 'application/vnd.etsi.tsl+xml', body: signed,
-    });
-    await saveDoc(stateId, state);
-    const outPath = artifact.path ?? `${store.kind}:lists/${stateId}#${state.sequenceNumber}`;
-
     // Verificación inmediata contra la MISMA librería que usan EUDIPLO y el
     // camino ZK: si aquí no pasa, no pasaría en producción tampoco.
     const anchorDer = new Uint8Array(
@@ -375,6 +373,15 @@ const cmds = {
     );
     const tl = await loadTrustedList(signed, { trustAnchors: [anchorDer] });
     const anchors = getTrustAnchors(tl, { serviceTypes: profile.serviceTypes });
+
+    const artifact = await store.artifacts.put({
+      kind: 'lists', id: stateId, sequence: state.sequenceNumber,
+      contentType: 'application/vnd.etsi.tsl+xml', body: signed,
+      nextUpdate: tl.nextUpdate,
+    });
+    await saveDoc(stateId, state);
+    const outPath = artifact.path ?? `${store.kind}:lists/${stateId}#${state.sequenceNumber}`;
+
     console.log(`lista ${stateId} #${state.sequenceNumber} → ${outPath}`);
     console.log(`  Annex B (TS 119 612 v2.4.1) · OK`);
     console.log(`  perfil AV TL (CE, tablas I.1–I.3) · OK`);

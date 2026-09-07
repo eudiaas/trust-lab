@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS artifacts (
   created_at   timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (kind, id, sequence)
 );
+
+ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS next_update timestamptz;
 `;
 
 export function sqlStore({ query, schema = SCHEMA_SQL, close }) {
@@ -112,39 +114,43 @@ export function sqlStore({ query, schema = SCHEMA_SQL, close }) {
     artifacts: {
       // Sin ON CONFLICT a proposito: reemitir con la misma secuencia es un
       // error, no una actualizacion. Lo publicado no se reescribe.
-      async put({ kind, id, sequence, contentType, body }) {
+      async put({ kind, id, sequence, contentType, body, nextUpdate }) {
         await q(
-          `INSERT INTO artifacts (kind, id, sequence, content_type, body)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [kind, id, sequence, contentType, body],
+          `INSERT INTO artifacts (kind, id, sequence, content_type, body, next_update)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [kind, id, sequence, contentType, body, nextUpdate ?? null],
         );
-        return { kind, id, sequence, contentType, body };
+        return { kind, id, sequence, contentType, body, nextUpdate };
       },
       async latest(kind, id) {
         const r = await q(
-          `SELECT sequence, content_type, body, created_at FROM artifacts
+          `SELECT sequence, content_type, body, created_at, next_update FROM artifacts
            WHERE kind = $1 AND id = $2 ORDER BY sequence DESC LIMIT 1`,
           [kind, id],
         );
         const row = r.rows[0];
-        return row ? { kind, id, sequence: row.sequence, contentType: row.content_type, body: row.body, createdAt: row.created_at } : null;
+        return row
+          ? { kind, id, sequence: row.sequence, contentType: row.content_type, body: row.body, createdAt: row.created_at, nextUpdate: row.next_update }
+          : null;
       },
       async get(kind, id, sequence) {
         const r = await q(
-          `SELECT sequence, content_type, body FROM artifacts
+          `SELECT sequence, content_type, body, next_update FROM artifacts
            WHERE kind = $1 AND id = $2 AND sequence = $3`,
           [kind, id, sequence],
         );
         const row = r.rows[0];
-        return row ? { kind, id, sequence: row.sequence, contentType: row.content_type, body: row.body } : null;
+        return row
+          ? { kind, id, sequence: row.sequence, contentType: row.content_type, body: row.body, nextUpdate: row.next_update }
+          : null;
       },
       async list(kind, id) {
         const r = await q(
-          `SELECT sequence, content_type, created_at FROM artifacts
+          `SELECT sequence, content_type, created_at, next_update FROM artifacts
            WHERE kind = $1 AND id = $2 ORDER BY sequence`,
           [kind, id],
         );
-        return r.rows.map((row) => ({ kind, id, sequence: row.sequence, contentType: row.content_type, createdAt: row.created_at }));
+        return r.rows.map((row) => ({ kind, id, sequence: row.sequence, contentType: row.content_type, createdAt: row.created_at, nextUpdate: row.next_update }));
       },
     },
   };

@@ -11,6 +11,11 @@
       "status": "invalid",
       "note": "intended use retirado por el RP",
       "changedAt": "2026-09-07T13:51:30.975Z"
+    },
+    "11": {
+      "status": "invalid",
+      "note": "prueba desde la consola",
+      "changedAt": "2026-09-07T14:32:43.151Z"
     }
   }
 }

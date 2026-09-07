@@ -189,6 +189,14 @@ payload)` que dice contra qué edición se emitió un certificado ajeno:
 Los campos que la edición vigente ya no transporta se avisan al emitir en vez
 de descartarse en silencio.
 
+## Un solo sitio para cada operación
+
+CLI y consola son **frontales**: parsean y presentan. Las operaciones viven en
+`packages/ops` y no se implementan dos veces. Es el mismo problema que este
+repositorio lleva documentando en otros sitios —lógica duplicada que diverge— y
+en una fábrica de certificados la copia que diverge no se nota hasta que una
+wallet dice que no.
+
 ## El almacén
 
 `packages/store` separa el CLI del sitio donde vive el estado. Tres

@@ -150,9 +150,13 @@ CA del wallet ──→ WIA · KA ────────→ wallet-lab
 CA de acceso ──────────────────────→ wrpac-lab
    └── access certificate (uno por servicio de la RP)
 CA de WRPRC ──→ firmante WRPRC ────→ wrprc-lab
-   └── registration certificate (uno por finalidad)
-firmante WRPRC ──→ su status list ──→ revoca los WRPRC que él emitió
+   ├── registration certificate (uno por finalidad)
+   └── su status list ──────────────→ revoca los que él emitió
 ```
+
+La última línea cuelga del firmante y no de una lista: **una status list por
+emisor de WRPRC**, firmada por él. Es lo que dibuja `/graph` en su séptima
+columna (§6.1).
 
 El **dashboard** de la consola (`/`) es ese grafo calculado sobre el almacén:
 cada tarjeta dice si algo se puede emitir ya o qué falta. Si no sabes cuál es el
@@ -573,19 +577,58 @@ certificados hay vivos.
 
 ### 6.1 El grafo
 
-`/graph` en la consola dibuja el marco entero. De izquierda a derecha va la
-dirección de la confianza:
+`/graph` en la consola dibuja el marco entero, en **siete columnas** que se leen
+de izquierda a derecha como va la dirección de la confianza:
 
 ```
-quien firma → listas → anclas publicadas → lo que cuelga de ellas → emitido
+1. firma las listas   → el TLSO, que no está en ninguna lista porque las firma
+2. listas de confianza
+3. anclas publicadas  → lo que cada lista declara
+4. lo que cuelga      → hojas bajo esas anclas
+5. relying parties
+6. emitido            → los WRPRC
+7. revocación         → una status list por emisor
 ```
+
+Las **status lists tienen carril propio, el último**, y no van con las listas de
+confianza: no dicen en quién se confía, dicen de qué dejó de confiar quien las
+firma. Su arista —`la-revoca`— apunta a la clave de su emisor, no a ningún
+operador de esquema.
 
 En rojo aparece lo que **no encadena con nada**, que son los dos fallos que
 producen artefactos que firman bien y una wallet rechaza:
 
 - **anclas huérfanas**: un certificado publicado en una lista cuya clave
-  privada no está en este almacén. Es como vienen sembradas las listas;
+  privada no está en este almacén;
 - **certificados emitidos bajo una CA que ninguna lista publica**.
+
+<details>
+<summary>Por qué el dibujo sale legible (y qué costó)</summary>
+
+Con las cajas en orden alfabético el diagrama era una maraña: el alfabeto no
+tiene nada que ver con quién apunta a quién. Tres cosas lo arreglan, y la
+primera es la menos importante:
+
+1. **Ordenación por baricentro** (heurística de Sugiyama): cada caja quiere
+   estar a la altura media de aquellas con las que se conecta, y se barre de
+   izquierda a derecha y de vuelta varias veces. Más el **centrado vertical** de
+   cada columna — con alturas dispares, alinearlas arriba obliga a las aristas a
+   bajar en diagonal desde la columna corta.
+2. **Una columna por tipo.** `rp` y `wrprc` la compartían, así que sus aristas
+   iban *dentro* de una columna: salían por la derecha de una caja para volver a
+   la izquierda de otra, cruzando lo que hubiera en medio.
+3. **Nodos virtuales** para las aristas que saltan más de una columna. Una
+   arista larga es una diagonal recta que el ordenador **no ve** —no tiene
+   ningún extremo en las columnas que atraviesa— y se cruza con todo lo que haya
+   allí. Con un punto invisible por columna intermedia, el baricentro puede
+   apartarla. Es la mitad del algoritmo que faltaba: el orden solo, sin esto, no
+   bajaba de la mitad de los cruces.
+
+Medido contando intersecciones reales entre los tramos del SVG: **16 → 3**. Los
+que quedan son estructurales; minimizar cruces es NP-duro y un grafo así no
+siempre admite dibujo plano.
+
+</details>
 
 El mismo grafo desde el CLI, en texto o en Mermaid para pegarlo donde haga
 falta:

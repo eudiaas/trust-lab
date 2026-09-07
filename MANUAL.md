@@ -216,28 +216,34 @@ $T mint-signer wrprc-ca wrprc-signer wrprc "C=ES, O=Lab RC Provider, CN=Lab WRPR
 > Consola: **Claves → CA / hoja** para las CAs, **Claves → Firmante de
 > credenciales o atestaciones** para los cinco firmantes.
 
-Cinco roles, **tres perfiles**. Los papeles que nombra un operador son más que
+Cinco roles y **dos perfiles**. Los papeles que nombra un operador son más que
 los certificados que existen de verdad, y decirlo evita buscar diferencias donde
 no las hay:
 
 | Rol | Qué firma | Perfil | ¿CA? |
 |---|---|---|---|
-| `mdoc-ds` | atestaciones de edad (MSO) | hoja + EKU `1.0.18013.5.1.2` | **obligatoria** |
-| `pid-ds` | el PID en `mso_mdoc` | **el mismo** que `mdoc-ds` | **obligatoria** |
-| `wrprc` | registration certificates | hoja, sin EKU | opcional |
-| `wia` | Wallet Instance Attestation | hoja, sin EKU | opcional |
-| `key-attestation` | Key Attestation | **el mismo** que `wia` | opcional |
+| `mdoc-ds` | atestaciones de edad (MSO) | **mdoc**: hoja + EKU `1.0.18013.5.1.2` | **obligatoria** |
+| `pid-ds` | el PID en `mso_mdoc` | **mdoc** | **obligatoria** |
+| `wrprc` | registration certificates | **jws**: hoja, sin EKU | opcional |
+| `wia` | Wallet Instance Attestation | **jws** | opcional |
+| `key-attestation` | Key Attestation | **jws** | opcional |
+
+Los tres del perfil `jws` son **el mismo certificado**: lo que firman —un JWS
+con su cadena en el `x5c`— no necesita nada especial en el certificado, así que
+no hay nada que los distinga salvo de quién cuelgan y en qué lista se publican.
+La consola los agrupa por perfil en el desplegable, para que no parezcan cinco
+opciones distintas.
 
 **`pid-ds` es `mdoc-ds`**: un PID en `mso_mdoc` es un mdoc, así que su Document
 Signer es un Document Signer de mdoc. Lo que cambia es de quién cuelga y en qué
 lista se publica, no el certificado. (Un PID en `dc+sd-jwt` no lleva ese EKU y
 sería otro perfil; no está implementado.)
 
-**`key-attestation` es `wia`**: ninguna norma consultada obliga a separarlos, y
-el anexo E de TS 119 602 admite *"one or more X.509 certificates"* en la misma
-entrada, así que uno solo vale. Se mantienen como dos nombres porque atestiguan
-cosas distintas y se pueden querer rotar aparte — no porque el certificado tenga
-que ser otro.
+**`key-attestation` es `wia`** (y `wrprc` también, en perfil): ninguna norma
+consultada obliga a separarlos, y el anexo E de TS 119 602 admite *"one or more
+X.509 certificates"* en la misma entrada, así que uno solo vale. Se mantienen
+como nombres distintos porque atestiguan cosas distintas y se pueden querer
+rotar aparte — no porque el certificado tenga que ser otro.
 
 **Los dos de mdoc exigen CA**, y es la única excepción a lo del autofirmado:
 ISO/IEC 18013-5 monta el Document Signer bajo una IACA. TS 119 602 no lo pide

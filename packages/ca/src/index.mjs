@@ -218,7 +218,7 @@ export function describeKey(certPem) {
 export const OID_MDOC_DS = '1.0.18013.5.1.2';
 
 /**
- * Perfiles de certificado. Son TRES, no cinco.
+ * Perfiles de certificado. Son DOS, no cinco.
  *
  * Los papeles que un operador nombra ("el DS del PID", "el que firma la Key
  * Attestation") son mas que los perfiles que existen de verdad, porque varios

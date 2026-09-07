@@ -218,6 +218,38 @@ export function rpsPage({ rps, statusLists = [], flash }) {
   });
 }
 
+/**
+ * Los papeles agrupados por el certificado que producen.
+ *
+ * Son cinco papeles y tres perfiles, y sin agrupar el desplegable sugiere cinco
+ * certificados distintos: `pid-ds` da exactamente lo mismo que `mdoc-ds`, y
+ * `key-attestation` lo mismo que `wia`. Elegir entre dos opciones identicas sin
+ * saber que lo son es la clase de duda que cuesta media hora y acaba en "¿por
+ * que hay dos?". El `optgroup` responde eso antes de que se pregunte.
+ */
+function roleOptions(roles) {
+  const grupos = new Map();
+  for (const [id, r] of Object.entries(roles)) {
+    if (!grupos.has(r.profile)) grupos.set(r.profile, []);
+    grupos.get(r.profile).push([id, r]);
+  }
+  return [...grupos.entries()]
+    .map(([perfil, items]) => {
+      const r = items[0][1];
+      const rasgos = [
+        r.eku ? `EKU ${r.eku.join(', ')}` : 'sin EKU',
+        r.requiresCa ? 'necesita CA' : 'admite autofirmado',
+      ].join(' · ');
+      const titulo = items.length > 1
+        ? `mismo certificado (${rasgos})`
+        : `${rasgos}`;
+      return `<optgroup label="${esc(titulo)}">${items
+        .map(([id, x]) => `<option value="${esc(id)}">${esc(x.label)} → ${esc(x.lista)}</option>`)
+        .join('')}</optgroup>`;
+    })
+    .join('');
+}
+
 export function keysPage({ keys, cas = [], roles = {}, schemes, flash }) {
   const ROLE_PILL = {
     CA: 'dim', 'firmante de listas': 'ok', 'access certificate': 'ok',
@@ -287,13 +319,7 @@ export function keysPage({ keys, cas = [], roles = {}, schemes, flash }) {
       <form method="post" action="/keys/signer">
         <div class="row">
           <input type="text" name="name" placeholder="nombre" required>
-          <select name="role">
-            ${Object.entries(roles)
-              .map(([id, r]) => `<option value="${esc(id)}">${esc(r.label)}${
-                r.requiresCa ? ' (necesita CA)' : ''
-              } → ${esc(r.lista)}</option>`)
-              .join('')}
-          </select>
+          <select name="role">${roleOptions(roles)}</select>
           <select name="issuer">
             <option value="">— autofirmado (sin CA) —</option>
             ${cas.map((c) => `<option>${esc(c)}</option>`).join('')}

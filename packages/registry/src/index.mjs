@@ -201,3 +201,82 @@ export function toWrprcInput(reg, serviceId, intendedUseId) {
     supervisoryAuthority: wrp.supervisoryAuthority,
   };
 }
+
+/**
+ * Registro nuevo: un esqueleto **que ya valida**.
+ *
+ * La alternativa —un documento incompleto que el editor rechaza al guardar—
+ * obligaria a rellenar cuarenta campos anidados de una sentada antes de poder
+ * salvar nada. Asi el operador crea la entidad, y a partir de ahi cambia
+ * valores de uno en uno con la validacion actuando de red. El precio es que
+ * los valores de relleno son visiblemente de relleno: si alguien emite un
+ * certificado sin tocarlos, se ve en el subject.
+ *
+ * El servicio y la finalidad de ejemplo son los del caso que este laboratorio
+ * existe para probar (AV, `age_over_18` sobre `eu.europa.ec.av.1`).
+ */
+export function newRegistry({
+  legalName,
+  country = 'ES',
+  identifierType = 'http://data.europa.eu/eudi/id/VATIN',
+  identifierValue,
+  baseUrl = 'https://trust-lab.example',
+  supervisoryAuthority,
+  serviceId = 'svc-1',
+  intendedUseId = 'use-1',
+  cpsUri,
+  statusList,
+  today = new Date().toISOString().slice(0, 10),
+} = {}) {
+  if (!legalName) throw new Error('hace falta legalName');
+  if (!identifierValue) throw new Error('hace falta el valor del identificador');
+  if (!IDENTIFIER_TYPES[identifierType]) throw new Error(`tipo de identificador desconocido: ${identifierType}`);
+  if (!/^[A-Z]{2}$/.test(country)) throw new Error('country debe ser ISO 3166-1 alpha-2');
+
+  const base = baseUrl.replace(/\/+$/, '');
+  const semantic = semanticIdentifier({ type: identifierType, value: identifierValue, country });
+
+  return {
+    _model:
+      'TS5 (Common formats and API for RP Registration information) + TS6 (Common set of RP information to be registered).',
+    walletRelyingParty: {
+      legalName,
+      identifier: [{ type: identifierType, value: identifierValue, country, primary: true }],
+      infoURI: `${base}/rp/${encodeURIComponent(semantic)}`,
+      isPSB: false,
+      registryURI: `${base}/registry/${country.toLowerCase()}/${semantic}`,
+      supervisoryAuthority: supervisoryAuthority ?? {
+        name: 'PENDIENTE — autoridad de control competente',
+        country,
+        formURI: [`${base}/pendiente`],
+      },
+      services: [
+        {
+          serviceTradeName: legalName,
+          serviceIdentifier: serviceId,
+          supportURI: `${base}/pendiente`,
+          srvDescription: [{ lang: 'en', content: 'PENDIENTE — description of the service' }],
+          entitlements: [ENTITLEMENT_BASE + 'Service_Provider'],
+          isIntermediary: false,
+          intendedUses: [
+            {
+              intendedUseIdentifier: intendedUseId,
+              createdAt: today,
+              purpose: [{ lang: 'en', content: 'PENDIENTE — purpose of the data request' }],
+              privacyPolicy: [{ uri: `${base}/pendiente`, type: 'PrivacyStatement' }],
+              credentials: [
+                {
+                  format: 'mso_mdoc',
+                  meta: { doctype_value: 'eu.europa.ec.av.1' },
+                  claims: [{ path: ['eu.europa.ec.av.1', 'age_over_18'] }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    wrpac: { policy: 'NCP-l-eudiwrp', cpsUri: cpsUri ?? `${base}/cps`, validityDays: 365 },
+    ...(statusList ? { statusList } : {}),
+  };
+}

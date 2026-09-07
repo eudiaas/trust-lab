@@ -10,6 +10,7 @@ import { assertTlsoProfile } from '../../packages/ca/src/index.mjs';
 import { assertRegistry } from '../../packages/registry/src/index.mjs';
 import { assertAvProfile } from '../../packages/tl-xml/src/av-profile.mjs';
 import { LIST_PROFILES } from '../../packages/lote/src/index.mjs';
+import { wrprcArtifactId } from '../../packages/ops/src/index.mjs';
 
 /** Un firmante de listas conforme a la clausula 5.7.1 es requisito de todo. */
 export async function tlsoCandidates(store, state) {
@@ -120,7 +121,8 @@ export async function rpReadiness(store) {
           purpose: u.purpose?.[0]?.content,
           credentials: (u.credentials ?? []).length,
           statusIndex: doc.statusList?.indexByIntendedUse?.[u.intendedUseIdentifier],
-          published: await published(store, 'wrprc', `${svc.serviceIdentifier}-${u.intendedUseIdentifier}`),
+          artifactId: wrprcArtifactId(doc.id, svc.serviceIdentifier, u.intendedUseIdentifier),
+          published: await published(store, 'wrprc', wrprcArtifactId(doc.id, svc.serviceIdentifier, u.intendedUseIdentifier)),
         });
       }
       // La convencion de nombre la fija `issueWrpac`: si esa clave existe, el

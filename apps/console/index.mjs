@@ -143,7 +143,8 @@ const server = createServer(async (req, res) => {
     }
 
     if (path === '/rps' && req.method === 'GET') {
-      return send(res, 200, views.rpsPage({ rps: await rpReadiness(store), flash }));
+      const statusLists = (await store.docs.list('*')).filter((d) => d.kind === 'token-status-list');
+      return send(res, 200, views.rpsPage({ rps: await rpReadiness(store), statusLists, flash }));
     }
 
     if (parts[0] === 'rps' && parts.length === 2 && req.method === 'GET') {
@@ -253,6 +254,22 @@ const server = createServer(async (req, res) => {
         (r) => `Status list ${r.id} reemitida (#${r.sequence}) · ${r.revoked} no valida(s)`);
     }
 
+    if (path === '/rps' && parts.length === 1) {
+      return run(res, '/rps', () =>
+        ops.createRp(store, {
+          id: form.get('id')?.trim(),
+          legalName: form.get('legalName')?.trim(),
+          country: form.get('country')?.trim().toUpperCase(),
+          identifierType: form.get('identifierType'),
+          identifierValue: form.get('identifierValue')?.trim(),
+          statusListId: form.get('statusList') || undefined,
+        }),
+        (r) =>
+          `Alta de ${r.legalName}: esqueleto valido creado` +
+          (r.statusList ? `, posicion ${Object.values(r.statusList.indexByIntendedUse)[0]} reservada` : '') +
+          '. Editalo para rellenar los campos PENDIENTE.');
+    }
+
     if (parts[0] === 'rps' && parts[2] === 'wrpac') {
       return run(res, `/rps/${parts[1]}`, () =>
         ops.issueWrpac(store, crypto, {
@@ -277,6 +294,10 @@ const server = createServer(async (req, res) => {
           const problems = assertRegistry(doc);
           if (problems.length) throw new ops.OpError('el registro no cumple TS5/TS6', problems);
         }
+        // Borrar antes de escribir: si la edicion cambia el `kind`, en SQL
+        // —clave primaria (kind, id)— un put a secas dejaria la fila vieja
+        // ahi, con el mismo id y contenido distinto.
+        await store.docs.delete('*', parts[1]);
         await store.docs.put(doc.kind ?? 'doc', parts[1], doc);
         return doc;
       }, 'Guardado.');

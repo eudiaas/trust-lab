@@ -150,6 +150,26 @@ separar instancias, certificados de acceso y finalidades. Y el identificador
 semántico (`VATES-B12345678`) se **deriva** del identificador tipado del
 registro en vez de escribirse a mano en los dos certificados.
 
+### Alta de una relying party
+
+El esqueleto que se crea **ya valida**. La alternativa —un documento incompleto
+que el editor rechaza al guardar— obligaría a rellenar cuarenta campos anidados
+de una sentada antes de poder salvar nada; así se crea la entidad y a partir de
+ahí se cambian valores de uno en uno con la validación de red. El precio es que
+los valores de relleno son visiblemente de relleno (`PENDIENTE — …`): si alguien
+emite un certificado sin tocarlos, se ve en el subject.
+
+En la consola es el formulario del final de `/rps`. Por CLI:
+
+```bash
+node apps/cli/index.mjs new-rp bodegas-valle "Bodegas del Valle S.A." A87654321 ES status-wrprc
+```
+
+Si se le indica una lista de revocación, le **reserva una posición libre** en el
+alta y no al emitir el WRPRC. Es deliberado: dos altas que eligen la misma
+posición se detectan cuando no cuesta nada, y no cuando ya hay material firmado
+apuntando a una posición compartida — que es como se revocan dos RP de golpe.
+
 ```bash
 node apps/cli/index.mjs mint-wrpac  wrpac-issuing-ca espuni-access state/espuni-rp.json av-1
 node apps/cli/index.mjs issue-wrprc state/espuni-rp.json av-1 av-over-18 tl-signer

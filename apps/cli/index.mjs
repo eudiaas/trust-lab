@@ -138,6 +138,21 @@ const cmds = {
     console.log(`posicion ${idx} de ${r.sub} → ${r.status}`);
   },
 
+  // trustlab new-rp <id> "<razon social>" <valor-id> [pais] [lista-revocacion] [tipo-id]
+  async 'new-rp'([id, legalName, identifierValue, country, statusListId, identifierType]) {
+    const r = await ops.createRp(store, {
+      id, legalName, identifierValue,
+      country: country?.toUpperCase() ?? 'ES',
+      statusListId: statusListId && statusListId !== '-' ? docId(statusListId) : undefined,
+      ...(identifierType ? { identifierType } : {}),
+    });
+    console.log(`registro ${r.id}: ${r.legalName}`);
+    const idx = r.statusList && Object.values(r.statusList.indexByIntendedUse)[0];
+    if (r.statusList) console.log(`  revocable en ${r.statusList.uri} posicion ${idx}`);
+    else console.log('  sin lista de revocacion: los WRPRC saldran sin `status`');
+    console.log('  esqueleto valido; rellena los campos PENDIENTE antes de emitir nada');
+  },
+
   // trustlab export-key <nombre> [chain|bundle|key|jwk] [destino]
   async 'export-key'([name, form = 'chain', dest]) {
     const r = await ops.exportKey(store, crypto, { name, form });

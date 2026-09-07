@@ -14,7 +14,7 @@ import { buildTrustedListXml, signTrustedListXml, assertAnnexB } from '../../tl-
 import { AV_TL_PROFILE, assertAvProfile } from '../../tl-xml/src/av-profile.mjs';
 import { buildLote, signLoteCompact, verifyLoteCompact, assertLote, LIST_PROFILES } from '../../lote/src/index.mjs';
 import { buildWrprc, signWrprcCompact, assertWrprc, decodeWRPRC, detectEdition, droppedByEdition } from '../../wrprc/src/index.mjs';
-import { assertRegistry, toWrpacSpec, toWrprcInput } from '../../registry/src/index.mjs';
+import { assertRegistry, toWrpacSpec, toWrprcInput, newRegistry } from '../../registry/src/index.mjs';
 import { signStatusListCompact, readStatus, STATUS_BY_NAME } from '../../status/src/index.mjs';
 import { TrustedListProfiles, loadTrustedList, getTrustAnchors } from '@owf/eudi-tl';
 
@@ -193,6 +193,9 @@ export async function issueWrpac(store, crypto, { registryId, serviceId, caName,
   return { name, subject: wrpac.cert.subject, policy: wrpac.policy, policyOid: wrpac.policyOid };
 }
 
+/** Un WRPRC se identifica por registro + servicio + finalidad, en ese orden. */
+export const wrprcArtifactId = (registryId, serviceId, useId) => `${registryId}-${serviceId}-${useId}`;
+
 /** Registration certificate: uno por finalidad (TS5 §2.4.4). */
 export async function issueWrprc(store, crypto, { registryId, serviceId, useId, signerName }) {
   const registry = await loadDoc(store, registryId);
@@ -211,14 +214,19 @@ export async function issueWrprc(store, crypto, { registryId, serviceId, useId, 
   if (bad.length) throw new OpError('el payload no valida contra TS 119 475', bad);
 
   const jwt = await signWrprcCompact(payload, signer, signerName);
+  // El id lleva el registro delante: TS5 no exige que `serviceIdentifier` sea
+  // unico entre relying parties, asi que dos RP con el mismo par
+  // servicio/finalidad —el caso normal cuando las dos salen del mismo
+  // esqueleto— se pisarian el certificado la una a la otra sin decir nada.
+  const artifactId = wrprcArtifactId(registryId, serviceId, useId);
   const artifact = await store.artifacts.put({
-    kind: 'wrprc', id: `${serviceId}-${useId}`, sequence: Math.floor(Date.now() / 1000),
+    kind: 'wrprc', id: artifactId, sequence: Math.floor(Date.now() / 1000),
     contentType: 'application/jwt', body: jwt,
   });
 
   const back = decodeWRPRC(jwt);
   return {
-    id: `${serviceId}-${useId}`, artifact,
+    id: artifactId, artifact,
     subject: payload.sub_ln ?? payload.name,
     entitlements: payload.entitlements.length,
     edition: detectEdition(back.header ?? {}, back.payload ?? back),
@@ -291,4 +299,66 @@ export async function exportArtifact(store, { kind, id, sequence }) {
     sequence: a.sequence,
     secret: false,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Alta de relying party
+// ---------------------------------------------------------------------------
+
+/** Posiciones de la lista de revocacion que ya tiene reservadas algun registro. */
+async function takenIndexes(store, listId) {
+  const taken = new Set();
+  for (const doc of await store.docs.list('*')) {
+    if (!doc.walletRelyingParty || doc.statusList?.listId !== listId) continue;
+    for (const idx of Object.values(doc.statusList.indexByIntendedUse ?? {})) taken.add(Number(idx));
+  }
+  return taken;
+}
+
+/**
+ * Da de alta una relying party con un esqueleto valido y, si se le indica una
+ * lista de revocacion, le reserva una posicion libre.
+ *
+ * Reservarla aqui y no al emitir el WRPRC es deliberado: dos altas que eligen
+ * la misma posicion se detectan al crear la entidad, cuando no cuesta nada,
+ * y no al emitir el certificado, cuando ya hay material firmado apuntando a
+ * una posicion compartida — que es como se revocan dos RP de golpe.
+ */
+export async function createRp(store, { id, statusListId, ...rest }) {
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(id ?? '')) {
+    throw new OpError('el identificador solo admite minusculas, digitos y guiones', [`recibido: "${id ?? ''}"`]);
+  }
+  if (await store.docs.get('*', id)) throw new OpError(`ya existe un documento con el id "${id}"`);
+
+  let statusList;
+  let baseUrl = rest.baseUrl;
+  if (statusListId) {
+    const list = await store.docs.get('*', statusListId);
+    if (!list) throw new OpError(`no existe la lista de revocacion "${statusListId}"`);
+    const taken = await takenIndexes(store, statusListId);
+    let idx = 0;
+    while (taken.has(idx)) idx += 1;
+    if (idx >= (list.size ?? 0)) {
+      throw new OpError(`la lista "${statusListId}" no tiene posiciones libres`, [`tamano ${list.size}`]);
+    }
+    statusList = {
+      listId: statusListId,
+      uri: list.url,
+      indexByIntendedUse: { [rest.intendedUseId ?? 'use-1']: idx },
+    };
+    // La URL de la lista es la unica pista fiable del dominio con el que se
+    // esta operando: el resto de URLs del esqueleto salen de ahi.
+    if (!baseUrl && list.url) {
+      try { baseUrl = new URL(list.url).origin; } catch { /* se queda el default */ }
+    }
+  }
+
+  const doc = newRegistry({ ...rest, baseUrl: baseUrl ?? rest.baseUrl, statusList });
+  const problems = assertRegistry(doc);
+  if (problems.length) throw new OpError('el esqueleto no valida', problems);
+  // El mismo `kind` que usa el editor: en SQL la clave primaria es (kind, id),
+  // asi que crear con uno y guardar con otro dejaria DOS filas con el mismo id
+  // y `get('*', id)` devolveria la que saliera primero.
+  await store.docs.put('doc', id, doc);
+  return { id, legalName: doc.walletRelyingParty.legalName, statusList, doc };
 }

@@ -40,6 +40,7 @@ p.lead { color:var(--dim); margin:0 0 1.6rem }
 .pill.dim { color:var(--dim); border-color:var(--border) }
 ul.blockers { margin:.4rem 0 0; padding-left:1.1rem; color:var(--warn); font-size:.88rem }
 form.inline { display:inline-flex; gap:.4rem; align-items:center; margin:.5rem .5rem 0 0 }
+    .row { display:flex; gap:.4rem; flex-wrap:wrap; align-items:center }
 select, input[type=text], input[type=password], textarea {
   background:var(--surface-2); color:var(--text); border:1px solid var(--border);
   border-radius:6px; padding:.35rem .5rem; font:inherit; font-size:.88rem }
@@ -149,7 +150,18 @@ export function dashboard({ items, rps, signers, flash }) {
   });
 }
 
-export function rpsPage({ rps, flash }) {
+// Los seis tipos de la tabla 2 de TS 119 475, con el prefijo semantico que
+// cada uno produce en el certificado (EN 319 412-1 §5.1.3).
+const ID_TYPE_LABELS = {
+  'http://data.europa.eu/eudi/id/VATIN': 'NIF / VAT (VAT…)',
+  'http://data.europa.eu/eudi/id/EUID': 'EUID registro mercantil (NTR…)',
+  'http://data.europa.eu/eudi/id/LEI': 'LEI (LEI…)',
+  'http://data.europa.eu/eudi/id/EORI-No': 'EORI (EOR…)',
+  'http://data.europa.eu/eudi/id/TIN': 'TIN (VAT… / TIN…)',
+  'http://data.europa.eu/eudi/id/Excise': 'Numero de impuestos especiales (EXC…)',
+};
+
+export function rpsPage({ rps, statusLists = [], flash }) {
   return layout({
     title: 'Relying parties', path: '/rps', flash,
     body: `<h1>Relying parties</h1>
@@ -163,7 +175,35 @@ export function rpsPage({ rps, flash }) {
         <td>${rp.services.map((s) => esc(s.name)).join(', ')}</td>
         <td>${rp.services.reduce((n, s) => n + s.uses.length, 0)}</td></tr>`,
       )
-      .join('')}</table>`,
+      .join('')}</table>
+
+    <h2>Dar de alta</h2>
+    <div class="card">
+      <div class="meta">Crea un esqueleto que <strong>ya valida</strong> contra TS5/TS6, con un
+      servicio y una finalidad de ejemplo, y reserva una posicion libre en la lista de revocacion.
+      Los campos que hay que rellenar despues van marcados como <span class="mono">PENDIENTE</span>.</div>
+      <form method="post" action="/rps">
+        <div class="row">
+          <input type="text" name="id" placeholder="identificador (minusculas-y-guiones)"
+                 pattern="[a-z0-9][a-z0-9-]*" required>
+          <input type="text" name="legalName" placeholder="razon social" required>
+        </div>
+        <div class="row" style="margin-top:.5rem">
+          <select name="identifierType">
+            ${Object.entries(ID_TYPE_LABELS)
+              .map(([uri, label]) => `<option value="${esc(uri)}">${esc(label)}</option>`)
+              .join('')}
+          </select>
+          <input type="text" name="identifierValue" placeholder="valor (p. ej. B12345678)" required>
+          <input type="text" name="country" placeholder="ES" size="3" pattern="[A-Za-z]{2}" value="ES" required>
+          <select name="statusList">
+            <option value="">sin lista de revocacion</option>
+            ${statusLists.map((l) => `<option value="${esc(l.id)}">${esc(l.id)}</option>`).join('')}
+          </select>
+          <button class="primary">Crear</button>
+        </div>
+      </form>
+    </div>`,
   });
 }
 
@@ -274,7 +314,7 @@ export function rpPage({ rp, statusLists, signers, cas, flash }) {
           <td>${
             u.published
               ? `<span class="pill ok">emitido</span> <a href="/download/wrprc/${encodeURIComponent(
-                  `${s.id}-${u.id}`,
+                  u.artifactId,
                 )}">descargar .jwt</a>`
               : '<span class="pill dim">no emitido</span>'
           }

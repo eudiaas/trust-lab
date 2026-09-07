@@ -209,15 +209,34 @@ $T mint-signer wrprc-ca wrprc-signer wrprc "C=ES, O=Lab RC Provider, CN=Lab WRPR
 > Consola: **Claves → CA / hoja** para las CAs, **Claves → Firmante de
 > credenciales o atestaciones** para los cinco firmantes.
 
-Los cinco roles de `mint-signer`:
+Cinco roles, **tres perfiles**. Los papeles que nombra un operador son más que
+los certificados que existen de verdad, y decirlo evita buscar diferencias donde
+no las hay:
 
-| Rol | Qué firma | Perfil |
-|---|---|---|
-| `mdoc-ds` | atestaciones de edad (MSO) | hoja + EKU `1.0.18013.5.1.2` |
-| `pid-ds` | el PID | igual; cambia de quién cuelga |
-| `wrprc` | registration certificates | hoja, sin EKU |
-| `wia` | Wallet Instance Attestation | hoja, sin EKU |
-| `key-attestation` | Key Attestation | hoja, sin EKU |
+| Rol | Qué firma | Perfil | ¿CA? |
+|---|---|---|---|
+| `mdoc-ds` | atestaciones de edad (MSO) | hoja + EKU `1.0.18013.5.1.2` | **obligatoria** |
+| `pid-ds` | el PID en `mso_mdoc` | **el mismo** que `mdoc-ds` | **obligatoria** |
+| `wrprc` | registration certificates | hoja, sin EKU | opcional |
+| `wia` | Wallet Instance Attestation | hoja, sin EKU | opcional |
+| `key-attestation` | Key Attestation | **el mismo** que `wia` | opcional |
+
+**`pid-ds` es `mdoc-ds`**: un PID en `mso_mdoc` es un mdoc, así que su Document
+Signer es un Document Signer de mdoc. Lo que cambia es de quién cuelga y en qué
+lista se publica, no el certificado. (Un PID en `dc+sd-jwt` no lleva ese EKU y
+sería otro perfil; no está implementado.)
+
+**`key-attestation` es `wia`**: ninguna norma consultada obliga a separarlos, y
+el anexo E de TS 119 602 admite *"one or more X.509 certificates"* en la misma
+entrada, así que uno solo vale. Se mantienen como dos nombres porque atestiguan
+cosas distintas y se pueden querer rotar aparte — no porque el certificado tenga
+que ser otro.
+
+**Los dos de mdoc exigen CA**, y es la única excepción a lo del autofirmado:
+ISO/IEC 18013-5 monta el Document Signer bajo una IACA. TS 119 602 no lo pide
+—su criterio es funcional— pero un verificador de mdoc que valide la jerarquía
+rechazaría un DS autofirmado, y esa variable no compensa dejarla abierta cuando
+la IACA cuesta un comando.
 
 **Por qué unos llevan EKU y otros no.** El de mdoc es el Document Signer de
 ISO/IEC 18013-5, que sí lo define. En los otros tres, la confianza la establece
@@ -316,7 +335,8 @@ Depende solo de qué publica la lista, y ya está en la tabla de arriba:
 | | ¿Sirve autofirmado? |
 |---|---|
 | `wrpac-lab` (anexo F) | **No.** La lista publica la CA emisora, y un access certificate es un X.509 que alguien tiene que firmar. Hace falta una CA de verdad — autofirmada como raíz, eso sí. |
-| las otras cuatro | **Sí.** El ancla publicada *es* ese certificado, así que no hay cadena que recorrer y una jerarquía por encima no añade nada al veredicto. |
+| `av-lab` y `pid-lab` | **No**, por los roles `mdoc-ds`/`pid-ds`: no lo pide TS 119 602 sino ISO/IEC 18013-5, que monta el DS bajo una IACA. La herramienta lo exige. |
+| `wallet-lab` y `wrprc-lab` | **Sí.** El ancla publicada *es* ese certificado, así que no hay cadena que recorrer y una jerarquía por encima no añade nada al veredicto. |
 
 ```bash
 node apps/cli/index.mjs mint-signer - wrprc-solo wrprc "C=ES, O=Lab RC Provider, CN=Firmante"
@@ -330,12 +350,10 @@ El `-` en lugar de la CA lo emite autofirmado. En la consola es la opción
 que mire el `KeyUsage` rechaza la firma. Por eso `mint-signer` sin CA existe, en
 vez de decirte «usa una CA autofirmada».
 
-**Cuándo interesa la CA de todas formas**, aunque la lista no la exija: para
-poder **rotar** el certificado firmante sin reemitir la lista. Con el firmante
-publicado directamente, cada rotación obliga a reemitir; con una CA por encima…
-tampoco sirve, porque estas cuatro listas publican el firmante, no la CA. Así
-que en la práctica, **para las cuatro, autofirmado es la opción simple y no
-pierdes nada**; la jerarquía solo paga en `wrpac-lab`.
+La razón habitual para poner una CA encima —poder **rotar** la hoja sin tocar la
+lista— **aquí no aplica**: como estas listas publican el firmante y no la CA,
+cada rotación obliga a reemitir la lista de todos modos. Así que para
+`wallet-lab` y `wrprc-lab`, autofirmado es la opción simple y no pierdes nada.
 
 ### 5.4 Firmar y publicar las listas
 

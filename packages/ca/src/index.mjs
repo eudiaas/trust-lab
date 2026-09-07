@@ -217,45 +217,80 @@ export function describeKey(certPem) {
 /** EKU de Document Signer de mdoc (ISO/IEC 18013-5 Anexo B). */
 export const OID_MDOC_DS = '1.0.18013.5.1.2';
 
+/**
+ * Perfiles de certificado. Son TRES, no cinco.
+ *
+ * Los papeles que un operador nombra ("el DS del PID", "el que firma la Key
+ * Attestation") son mas que los perfiles que existen de verdad, porque varios
+ * papeles distintos se firman con un certificado del mismo tipo. Definir un
+ * perfil por papel era duplicacion: dos entradas identicas salvo la etiqueta
+ * divergen en cuanto alguien toca una y no la otra.
+ *
+ * Asi que los perfiles se definen una vez y los papeles apuntan a ellos. Que
+ * dos papeles compartan perfil queda dicho, en vez de descubrirse comparando.
+ */
+const PROFILE = {
+  'mdoc-ds': {
+    eku: [OID_MDOC_DS],
+    validityDays: 365,
+    // ISO/IEC 18013-5 monta el Document Signer bajo una IACA. TS 119 602 no lo
+    // exige —su criterio es funcional— pero un verificador de mdoc que valide
+    // la jerarquia rechazaria un DS autofirmado, y esa variable no compensa
+    // dejarla abierta cuando la CA cuesta un comando.
+    requiresCa: 'un Document Signer de mdoc cuelga de una IACA (ISO/IEC 18013-5)',
+  },
+  jws: { eku: null, validityDays: 1095, requiresCa: null },
+};
+
 export const SIGNER_ROLES = {
   'mdoc-ds': {
+    profile: 'mdoc-ds',
     label: 'Document Signer de mdoc',
-    eku: [OID_MDOC_DS],
-    validityDays: 365,
     lista: 'la lista del emisor (AV TL para AV, LoTE de PID para PID)',
-    nota: 'Firma los MSO. La AV Trusted List lleva el DS, no la IACA.',
+    nota: 'Firma los MSO. La AV Trusted List publica el DS, no la IACA.',
   },
   'pid-ds': {
-    label: 'Document Signer del PID',
-    eku: [OID_MDOC_DS],
-    validityDays: 365,
+    profile: 'mdoc-ds',
+    label: 'Document Signer del PID en mso_mdoc',
     lista: 'EUPIDProvidersList (pid-lab)',
-    nota: 'Mismo perfil que cualquier DS de mdoc; cambia de quien cuelga.',
+    nota:
+      'Es el MISMO perfil que mdoc-ds, porque un PID en mso_mdoc es un mdoc: ' +
+      'cambia de quien cuelga y en que lista se publica, no el certificado. ' +
+      'Un PID en dc+sd-jwt no lleva este EKU y seria otro perfil (no implementado).',
   },
   wrprc: {
+    profile: 'jws',
     label: 'firmante de registration certificates',
-    eku: null,
-    validityDays: 1095,
     lista: 'EUWRPRCProvidersList (wrprc-lab)',
     nota:
       'TS 119 475 no le exige el EKU id-tsl-kp-tslSigning: eso es de TS 119 612 ' +
       'y solo aplica a quien firma listas. Su cadena va en el x5c del propio JWS.',
   },
   wia: {
+    profile: 'jws',
     label: 'firmante de Wallet Instance Attestation',
-    eku: null,
-    validityDays: 1095,
     lista: 'EUWalletProvidersList (wallet-lab)',
     nota: 'Cuelga del wallet provider, que es el ancla publicada en la lista.',
   },
   'key-attestation': {
+    profile: 'jws',
     label: 'firmante de Key Attestation',
-    eku: null,
-    validityDays: 1095,
     lista: 'EUWalletProvidersList (wallet-lab)',
-    nota: 'Puede ser el mismo que el de WIA; se separa por si se quiere rotar aparte.',
+    nota:
+      'Mismo perfil que wia. Ninguna norma consultada obliga a separarlos, y el ' +
+      'anexo E de TS 119 602 admite "one or more X.509 certificates" en la misma ' +
+      'entrada, asi que uno solo vale. Se mantienen como papeles distintos porque ' +
+      'atestiguan cosas distintas y se pueden querer rotar aparte — no porque el ' +
+      'certificado tenga que ser otro.',
   },
 };
+
+/** El papel resuelto contra su perfil. */
+export function signerRole(role) {
+  const r = SIGNER_ROLES[role];
+  if (!r) return null;
+  return { ...PROFILE[r.profile], ...r };
+}
 
 /**
  * Hoja con uno de los papeles de arriba, firmada por la CA que toca.
@@ -266,10 +301,11 @@ export const SIGNER_ROLES = {
  * al ancla que publica la lista.
  */
 export async function mintRoleSigner(crypto, ca, { role, subject, validityDays }) {
-  const spec = SIGNER_ROLES[role];
+  const spec = signerRole(role);
   if (!spec) {
     throw new Error(`rol desconocido: ${role} (usa uno de: ${Object.keys(SIGNER_ROLES).join(', ')})`);
   }
+  if (!ca && spec.requiresCa) throw new Error(`${spec.requiresCa}: falta el emisor`);
   const extensions = spec.eku ? [new x509.ExtendedKeyUsageExtension(spec.eku, false)] : [];
   const days = validityDays ?? spec.validityDays;
 

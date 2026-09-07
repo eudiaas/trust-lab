@@ -16,7 +16,7 @@ import { cryptoProvider } from '@peculiar/x509';
 import { openStore, seedIfEmpty } from '../../packages/store/src/index.mjs';
 import * as ops from '../../packages/ops/src/index.mjs';
 import { assertRegistry } from '../../packages/registry/src/index.mjs';
-import { describeKey, assertTlsoProfile, SIGNER_ROLES } from '../../packages/ca/src/index.mjs';
+import { describeKey, assertTlsoProfile, SIGNER_ROLES, signerRole } from '../../packages/ca/src/index.mjs';
 import { readiness, rpReadiness, tlsoCandidates, signingCandidates } from './readiness.mjs';
 import * as views from './views.mjs';
 import { buildGraph, danglingChains } from '../../packages/graph/src/index.mjs';
@@ -155,7 +155,8 @@ const server = createServer(async (req, res) => {
       }
       const schemes = (await store.docs.list('*')).filter((d) => d.kind === 'etsi-tl-xml');
       const cas = keys.filter((k) => k.ca).map((k) => k.name);
-      return send(res, 200, views.keysPage({ keys, cas, roles: SIGNER_ROLES, schemes, flash }));
+      const roles = Object.fromEntries(Object.keys(SIGNER_ROLES).map((k) => [k, signerRole(k)]));
+      return send(res, 200, views.keysPage({ keys, cas, roles, schemes, flash }));
     }
 
     if (path === '/rps' && req.method === 'GET') {

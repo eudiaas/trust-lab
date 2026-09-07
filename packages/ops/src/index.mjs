@@ -7,7 +7,7 @@
 // duplicada en espuni, el vocabulario de la norma copiado a mano): dos copias
 // de una regla acaban divergiendo, y la que diverge en una fabrica de
 // certificados no se nota hasta que una wallet dice que no.
-import { mintCa, mintLeaf, mintTlSigner, assertTlsoProfile, mintRoleSigner, SIGNER_ROLES } from '../../ca/src/index.mjs';
+import { mintCa, mintLeaf, mintTlSigner, assertTlsoProfile, mintRoleSigner, signerRole, SIGNER_ROLES } from '../../ca/src/index.mjs';
 import { mintWrpac, assertWrpacProfile } from '../../ca/src/wrpac.mjs';
 import { inMemorySigner } from '../../signer/src/index.mjs';
 import { buildTrustedListXml, signTrustedListXml, assertAnnexB } from '../../tl-xml/src/index.mjs';
@@ -85,7 +85,7 @@ export async function mintKey(store, crypto, { name, subject, issuer }) {
  * correspondiente. Emitirlo sin CA no tendria sentido y por eso no se permite.
  */
 export async function mintSigner(store, crypto, { name, issuer, role, subject, validityDays }) {
-  const spec = SIGNER_ROLES[role];
+  const spec = signerRole(role);
   if (!spec) {
     throw new OpError(`rol desconocido: ${role}`, [`usa uno de: ${Object.keys(SIGNER_ROLES).join(', ')}`]);
   }
@@ -93,6 +93,9 @@ export async function mintSigner(store, crypto, { name, issuer, role, subject, v
   // certificado firmante: alli el ancla ES este certificado. Con emisor cuelga
   // de esa CA, que es lo que hace falta cuando la lista publica la CA (anexo F)
   // o cuando se quiere poder rotar la hoja sin reemitir la lista.
+  if (!issuer && spec.requiresCa) {
+    throw new OpError(`${spec.requiresCa}`, ['emite antes la CA con mint-ca y pasala como emisor']);
+  }
   let ca = null;
   if (issuer) {
     const stored = await loadKey(store, issuer);

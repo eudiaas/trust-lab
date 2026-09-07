@@ -289,7 +289,9 @@ export function keysPage({ keys, cas = [], roles = {}, schemes, flash }) {
           <input type="text" name="name" placeholder="nombre" required>
           <select name="role">
             ${Object.entries(roles)
-              .map(([id, r]) => `<option value="${esc(id)}">${esc(r.label)} → ${esc(r.lista)}</option>`)
+              .map(([id, r]) => `<option value="${esc(id)}">${esc(r.label)}${
+                r.requiresCa ? ' (necesita CA)' : ''
+              } → ${esc(r.lista)}</option>`)
               .join('')}
           </select>
           <select name="issuer">

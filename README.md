@@ -1,13 +1,20 @@
-# trust-lab — v0 (opción C)
+# trust-lab
 
-Fábrica de material de confianza para probar wallets EUDI. **No es un servicio**:
-es un CLI que emite artefactos firmados estáticos. Publicarlos es `nginx`.
+Fábrica de material de confianza para probar wallets EUDI: emite las listas y
+los certificados que en producción emitirían un Estado miembro y sus
+prestadores acreditados, en los mismos formatos que las listas reales de la
+Comisión.
+
+Empezó siendo solo un CLI que escupía artefactos firmados estáticos (la
+«opción C» del diseño inicial). Hoy son además dos servicios —una **consola**
+autenticada que emite y un **publisher** de solo lectura que sirve—, y los tres
+frontales comparten las mismas operaciones.
 
 ```bash
 node apps/cli/index.mjs mint-ca    tl-signer "C=ES, O=espuni Trust Lab, CN=Trust Lab Scheme Operator"
 node apps/cli/index.mjs mint-ca    av-iaca   "C=ES, O=Lab AV Attestation Provider, CN=Lab AV IACA"
 node apps/cli/index.mjs mint-leaf  av-iaca av-ds "C=ES, O=Lab AV Attestation Provider, CN=Lab AV DS 01"
-node apps/cli/index.mjs add-provider av-lab av-ds "Lab AV Attestation Provider"
+node apps/cli/index.mjs add-provider av-lab av-ds "Lab AV Attestation Provider" ES
 node apps/cli/index.mjs build-list av-lab tl-signer
 ```
 
@@ -28,6 +35,10 @@ JWS verificado · nextUpdate 2026-10-07T13:18:07Z · 1 entidad(es)
 La última orden emite `out/lists/av-lab.xml` **y la verifica con `@owf/eudi-tl`**,
 que es la misma librería que usan EUDIPLO en el camino clásico y espuni en el
 camino ZK. Si pasa aquí, la aceptan los dos.
+
+> **Cómo se opera esto**: [`MANUAL.md`](MANUAL.md) — el recorrido completo,
+> de la primera clave a la lista publicada. Este documento explica el *por qué*;
+> el manual, el *cómo*.
 
 ## Los cuatro contratos (lo que hace barato migrar a un servicio)
 

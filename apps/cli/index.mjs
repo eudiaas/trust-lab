@@ -22,6 +22,20 @@ const docId = (ref) => ref.replace(/^state\//, '').replace(/\.json$/, '');
 
 const where = (r) => r.artifact?.path ?? `${store.kind}:${r.artifact?.kind}/${r.id}#${r.sequence}`;
 
+/** El grafo en Mermaid: para pegarlo donde haga falta sin instalar nada. */
+function toMermaid(g) {
+  const id = (s) => s.replace(/[^a-zA-Z0-9]/g, '_');
+  const out = ['graph LR'];
+  for (const n of g.nodes) {
+    const shape = { list: ['[(', ')]'], key: ['[', ']'], rp: ['([', '])'], wrprc: ['>', ']'], orphan: ['{{', '}}'] }[n.type] ?? ['[', ']'];
+    out.push(`  ${id(n.id)}${shape[0]}"${n.label}"${shape[1]}`);
+  }
+  for (const e of g.edges) {
+    out.push(`  ${id(e.from)} -->|${e.type}${e.label ? ' ' + e.label : ''}| ${id(e.to)}`);
+  }
+  return out.join('\n');
+}
+
 const cmds = {
   // trustlab mint-ca <nombre> "<DN>"
   async 'mint-ca'([name, subject]) {
@@ -167,6 +181,61 @@ const cmds = {
     if (r.statusList) console.log(`  revocable en ${r.statusList.uri} posicion ${idx}`);
     else console.log('  sin lista de revocacion: los WRPRC saldran sin `status`');
     console.log('  esqueleto valido; rellena los campos PENDIENTE antes de emitir nada');
+  },
+
+  // trustlab graph [mermaid]
+  async graph([format]) {
+    const { buildGraph, danglingChains } = await import('../../packages/graph/src/index.mjs');
+    const g = await buildGraph(store);
+    if (format === 'mermaid') {
+      console.log(toMermaid(g));
+      return;
+    }
+    for (const n of g.nodes.filter((x) => x.type === 'list')) {
+      const firmante = g.edges.find((e) => e.from === n.id && e.type === 'firmada-por');
+      console.log(`${n.label}  ${n.published ? '#' + n.published.sequence : '(sin publicar)'}`);
+      if (firmante) console.log(`  firmada por ${firmante.to.replace('key:', '')}`);
+      for (const e of g.edges.filter((x) => x.to === n.id && x.type === 'contenido-en')) {
+        const from = g.nodes.find((x) => x.id === e.from);
+        const huerfano = from?.type === 'orphan' ? '  ⚠ sin clave privada en el almacen' : '';
+        console.log(`  contiene ${e.label ?? from?.label}${huerfano}`);
+        for (const h of g.edges.filter((x) => x.to === e.from && x.type === 'emitido-por')) {
+          console.log(`    └ emite ${h.from.replace('key:', '')}`);
+        }
+      }
+    }
+    const roto = danglingChains(g);
+    if (roto.length) {
+      console.log('\ncadenas que no llegan a ningun ancla:');
+      for (const r of roto) console.log(`  ⚠ ${r.label}: ${r.why}`);
+    }
+  },
+
+  // trustlab delete-key <nombre> [force]
+  async 'delete-key'([name, force]) {
+    const r = await ops.deleteKey(store, { name, force: force === 'force' });
+    console.log(`borrada ${r.deleted}`);
+    for (const b of r.broke) console.log(`  ⚠ rota: ${b}`);
+  },
+
+  // trustlab delete-rp <id> [force]
+  async 'delete-rp'([id, force]) {
+    const r = await ops.deleteRp(store, { id, force: force === 'force' });
+    console.log(`borrado ${r.deleted}`);
+    for (const x of r.retirados) console.log(`  retirado ${x}`);
+  },
+
+  // trustlab delete-wrprc <id>
+  async 'delete-wrprc'([id]) {
+    const r = await ops.deleteWrprc(store, { id });
+    console.log(`borrado el WRPRC ${r.deleted} (#${r.sequence})`);
+  },
+
+  // trustlab unpublish <estado>
+  async unpublish([stateId]) {
+    const r = await ops.unpublish(store, { id: docId(stateId) });
+    console.log(`retirada la version #${r.retirada} de ${r.id}`);
+    console.log(`  ${r.url} deja de servirse hasta que se reemita`);
   },
 
   // trustlab export-key <nombre> [chain|bundle|key|jwk] [destino]

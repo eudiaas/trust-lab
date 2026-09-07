@@ -81,5 +81,9 @@ export function encryptedKeys(keys, keyMaterial, { required = true, where = 'est
     },
 
     list: (...a) => keys.list(...a),
+    // Borrar no exige descifrar: se pasa tal cual. Faltaba, y el fallo no
+    // aparecia hasta intentar borrar una clave sin dependencias — porque la
+    // comprobacion de dependencias es lo primero y cortaba antes.
+    delete: (...a) => keys.delete(...a),
   };
 }

@@ -45,6 +45,20 @@ async function conformance(store, { historial }) {
   } else {
     console.log('  --   historial de artefactos: lo lleva git (almacen de fichero)');
   }
+
+  // Borrado. Es la mitad que faltaba: sin el, el unico modo de deshacer una
+  // emision mal encadenada era tirar el almacen entero.
+  eq('artifacts: el firmante se conserva',
+    (await store.artifacts.latest('lists', 'av-lab')).signer ?? null, null);
+  await store.artifacts.put({ kind: 'lists', id: 'tmp', sequence: 1, contentType: 'text/plain', body: 'x', signer: 'tl-signer' });
+  eq('artifacts: put guarda el firmante', (await store.artifacts.latest('lists', 'tmp')).signer, 'tl-signer');
+  await store.artifacts.delete('lists', 'tmp');
+  eq('artifacts: delete borra todas las versiones', await store.artifacts.latest('lists', 'tmp'), null);
+
+  await store.keys.put('temporal', { name: 'temporal', key: {}, crt: [] });
+  await store.keys.delete('temporal');
+  eq('keys: delete', await store.keys.get('temporal'), null);
+  check('keys: delete lo saca del listado', !(await store.keys.list()).includes('temporal'));
 }
 
 console.log('SUITE DE CONFORMIDAD DEL ALMACEN');
@@ -88,6 +102,11 @@ try {
 // se tiene que poder seguir leyendo tras activar el cifrado.
 await base.keys.put('vieja', { name: 'vieja', key: { d: 'en-claro' }, crt: ['PEM'] });
 eq('lee material antiguo sin cifrar', (await enc.get('vieja')).key, { d: 'en-claro' });
+
+// El envoltorio tiene que exponer la MISMA interfaz que envuelve. `delete`
+// faltaba, y no se noto hasta intentar borrar una clave sin dependencias.
+await enc.delete('vieja');
+eq('el envoltorio de cifrado tambien borra', await enc.get('vieja'), null);
 
 console.log(failures === 0 ? '\nTODO OK' : `\n${failures} FALLO(S)`);
 process.exit(failures === 0 ? 0 : 1);

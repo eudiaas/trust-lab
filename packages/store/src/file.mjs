@@ -60,13 +60,14 @@ export function fileStore({ root, artifactExt = EXT } = {}) {
         const files = await readdir(join(root, 'out/keys')).catch(() => []);
         return files.filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, ''));
       },
+      delete: (name) => unlink(keyPath(name)).catch(() => {}),
     },
 
     artifacts: {
       // En fichero solo vive LA ULTIMA emision, y el historial lo lleva git.
       // Es la asimetria deliberada con el almacen SQL, que si guarda todas las
       // versiones porque alli no hay git detras.
-      async put({ kind, id, body, sequence, contentType, nextUpdate }) {
+      async put({ kind, id, body, sequence, contentType, nextUpdate, signer }) {
         const ext = artifactExt[kind] ?? 'txt';
         const path = artifactPath(kind, id, ext);
         await writeFileEnsuring(path, body);
@@ -75,9 +76,9 @@ export function fileStore({ root, artifactExt = EXT } = {}) {
         // deducirlos seria adivinar lo que ya sabiamos al emitirlo.
         await writeFileEnsuring(
           `${path}.meta.json`,
-          JSON.stringify({ kind, id, sequence, contentType, nextUpdate }, null, 2) + '\n',
+          JSON.stringify({ kind, id, sequence, contentType, nextUpdate, signer }, null, 2) + '\n',
         );
-        return { kind, id, path, sequence, contentType, nextUpdate };
+        return { kind, id, path, sequence, contentType, nextUpdate, signer };
       },
       async latest(kind, id) {
         const ext = artifactExt[kind] ?? 'txt';
@@ -93,6 +94,11 @@ export function fileStore({ root, artifactExt = EXT } = {}) {
       async list(kind, id) {
         const one = await this.latest(kind, id);
         return one ? [one] : [];
+      },
+      async delete(kind, id) {
+        const path = artifactPath(kind, id, artifactExt[kind] ?? 'txt');
+        await unlink(path).catch(() => {});
+        await unlink(`${path}.meta.json`).catch(() => {});
       },
     },
   };

@@ -137,7 +137,7 @@ export async function buildAvList(store, crypto, { id, signerName }) {
   const anchors = getTrustAnchors(tl, { serviceTypes: profile.serviceTypes });
 
   const artifact = await store.artifacts.put({
-    kind: 'lists', id, sequence: state.sequenceNumber,
+    kind: 'lists', id, sequence: state.sequenceNumber, signer: signerName,
     contentType: 'application/vnd.etsi.tsl+xml', body: signed, nextUpdate: tl.nextUpdate,
   });
   await store.docs.put(state.kind, id, state);
@@ -160,7 +160,7 @@ export async function buildLoteList(store, crypto, { id, signerName }) {
   const check = await verifyLoteCompact(jws, stored.crt[0]);
 
   const artifact = await store.artifacts.put({
-    kind: 'lote', id, sequence: state.sequenceNumber,
+    kind: 'lote', id, sequence: state.sequenceNumber, signer: signerName,
     contentType: 'application/jwt', body: jws, nextUpdate: check.nextUpdate,
   });
   await store.docs.put(state.kind, id, state);
@@ -185,7 +185,7 @@ export async function buildStatusList(store, crypto, { id, signerName }) {
   state.sequenceNumber += 1;
   const jwt = await signStatusListCompact(state, signer);
   const artifact = await store.artifacts.put({
-    kind: 'status', id, sequence: state.sequenceNumber,
+    kind: 'status', id, sequence: state.sequenceNumber, signer: signerName,
     contentType: 'application/statuslist+jwt', body: jwt,
     nextUpdate: new Date(Date.now() + (state.expiresInDays ?? 30) * 86400000).toISOString(),
   });
@@ -268,7 +268,7 @@ export async function issueWrprc(store, crypto, { registryId, serviceId, useId, 
   // esqueleto— se pisarian el certificado la una a la otra sin decir nada.
   const artifactId = wrprcArtifactId(registryId, serviceId, useId);
   const artifact = await store.artifacts.put({
-    kind: 'wrprc', id: artifactId, sequence: Math.floor(Date.now() / 1000),
+    kind: 'wrprc', id: artifactId, sequence: Math.floor(Date.now() / 1000), signer: signerName,
     contentType: 'application/jwt', body: jwt,
   });
 
@@ -409,4 +409,119 @@ export async function createRp(store, { id, statusListId, ...rest }) {
   // y `get('*', id)` devolveria la que saliera primero.
   await store.docs.put('doc', id, doc);
   return { id, legalName: doc.walletRelyingParty.legalName, statusList, doc };
+}
+
+// ---------------------------------------------------------------------------
+// Borrado
+//
+// Toda operacion de borrado consulta el MISMO grafo que dibuja la pagina de
+// dependencias. No hay dos ideas de "que depende de que": la que avisa y la
+// que se pinta son la misma, porque una discrepancia ahi solo se nota
+// borrando algo que hacia falta.
+//
+// El aviso no es un obstaculo que apartar: un `force` que se usa por costumbre
+// no protege de nada. Por eso el mensaje dice QUE se rompe, con nombres, en
+// vez de un "hay dependencias" que no ayuda a decidir.
+// ---------------------------------------------------------------------------
+
+const DEP_LABEL = {
+  'emitido-por': 'cuelga de esta clave',
+  'contenido-en': 'esta publicado en',
+  'firmada-por': 'esta firmada por esta clave',
+  'firmado-por': 'esta firmado por esta clave',
+  'revocable-en': 'se revoca en',
+  'access-cert': 'usa esta clave como access certificate',
+  de: 'pertenece a',
+};
+
+async function checkDependents(store, id, { force }) {
+  const { buildGraph, dependents } = await import('../../graph/src/index.mjs');
+  const graph = await buildGraph(store);
+  const node = graph.nodes.find((n) => n.id === id);
+  if (!node) throw new OpError(`no existe "${id}"`);
+  const deps = dependents(graph, id).map((e) => {
+    const from = graph.nodes.find((n) => n.id === e.from);
+    return `${from?.label ?? e.from} ${DEP_LABEL[e.type] ?? e.type}`;
+  });
+  if (deps.length && !force) {
+    throw new OpError(`no se borra "${node.label}": ${deps.length} cosa(s) dependen de el`, [
+      ...deps,
+      'repite con force para borrarlo igualmente y dejar esas cadenas rotas',
+    ]);
+  }
+  return { node, broke: deps };
+}
+
+/** Borra una clave con su certificado. */
+export async function deleteKey(store, { name, force = false }) {
+  const { node, broke } = await checkDependents(store, `key:${name}`, { force });
+  await store.keys.delete(name);
+  return { deleted: node.label, broke };
+}
+
+/** Borra un registro de relying party, y con el sus certificados de servicio. */
+export async function deleteRp(store, { id, force = false }) {
+  const doc = await loadDoc(store, id);
+  if (!doc.walletRelyingParty) throw new OpError(`"${id}" no es un registro de relying party`);
+  const { node, broke } = await checkDependents(store, `rp:${id}`, { force: true });
+
+  // Sus propios certificados no cuentan como dependencia externa: son suyos y
+  // se van con el. Lo que si cuenta es cualquier otra cosa.
+  const propios = new Set();
+  for (const svc of doc.walletRelyingParty.services ?? []) {
+    propios.add(`${id}-${svc.serviceIdentifier}-access`);
+    for (const u of svc.intendedUses ?? []) {
+      propios.add(`${id}-${svc.serviceIdentifier}-${u.intendedUseIdentifier}`);
+    }
+  }
+  const ajenas = broke.filter((b) => ![...propios].some((p) => b.includes(p)));
+  if (ajenas.length && !force) {
+    throw new OpError(`no se borra "${node.label}": hay dependencias externas`, [
+      ...ajenas,
+      'repite con force para borrarlo igualmente',
+    ]);
+  }
+
+  const retirados = [];
+  for (const svc of doc.walletRelyingParty.services ?? []) {
+    const key = `${id}-${svc.serviceIdentifier}-access`;
+    if (await store.keys.get(key).catch(() => null)) {
+      await store.keys.delete(key);
+      retirados.push(`clave ${key}`);
+    }
+    for (const u of svc.intendedUses ?? []) {
+      const aid = wrprcArtifactId(id, svc.serviceIdentifier, u.intendedUseIdentifier);
+      if (await store.artifacts.latest('wrprc', aid)) {
+        await store.artifacts.delete('wrprc', aid);
+        retirados.push(`WRPRC ${aid}`);
+      }
+    }
+  }
+  await store.docs.delete('*', id);
+  return { deleted: doc.walletRelyingParty.legalName ?? id, retirados };
+}
+
+/**
+ * Retira lo publicado de un documento sin tocar el documento.
+ *
+ * Es el borrado que hace falta cuando una lista salio con un ancla que no
+ * encadena: se retira, se corrige el estado y se reemite. Deja el documento
+ * intacto a proposito — perderlo obligaria a reconstruirlo entero.
+ */
+export async function unpublish(store, { id }) {
+  const doc = await loadDoc(store, id);
+  const kind = { 'etsi-tl-xml': 'lists', 'lote-json': 'lote', 'token-status-list': 'status' }[doc.kind];
+  if (!kind) throw new OpError(`"${id}" no es un documento publicable`);
+  const a = await store.artifacts.latest(kind, id);
+  if (!a) throw new OpError(`"${id}" no tiene nada publicado`);
+  await store.artifacts.delete(kind, id);
+  return { id, kind, retirada: a.sequence, url: doc.url };
+}
+
+/** Borra un WRPRC emitido. El registro y su posicion de revocacion se quedan. */
+export async function deleteWrprc(store, { id }) {
+  const a = await store.artifacts.latest('wrprc', id);
+  if (!a) throw new OpError(`no hay ningun WRPRC "${id}"`);
+  await store.artifacts.delete('wrprc', id);
+  return { deleted: id, sequence: a.sequence };
 }

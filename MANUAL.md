@@ -388,7 +388,95 @@ certificados hay vivos.
 
 ---
 
-## 6. Descargar el material
+## 6. Ver las dependencias, y deshacer
+
+### 6.1 El grafo
+
+`/graph` en la consola dibuja el marco entero. De izquierda a derecha va la
+dirección de la confianza:
+
+```
+quien firma → listas → anclas publicadas → lo que cuelga de ellas → emitido
+```
+
+En rojo aparece lo que **no encadena con nada**, que son los dos fallos que
+producen artefactos que firman bien y una wallet rechaza:
+
+- **anclas huérfanas**: un certificado publicado en una lista cuya clave
+  privada no está en este almacén. Es como vienen sembradas las listas;
+- **certificados emitidos bajo una CA que ninguna lista publica**.
+
+El mismo grafo desde el CLI, en texto o en Mermaid para pegarlo donde haga
+falta:
+
+```bash
+node apps/cli/index.mjs graph
+node apps/cli/index.mjs graph mermaid
+```
+
+El dibujo se descarga como SVG desde `/graph.svg`.
+
+### 6.2 Borrar
+
+Cada elemento tiene su borrado, y **todos consultan ese mismo grafo antes de
+actuar**. No hay dos ideas de qué depende de qué: la que avisa y la que se
+pinta son la misma.
+
+| Qué | Consola | CLI |
+|---|---|---|
+| una clave con su certificado | `/keys` → Borrar | `delete-key <nombre> [force]` |
+| una relying party y sus certificados | `/rps` → Borrar | `delete-rp <id> [force]` |
+| un WRPRC emitido | `/rps/<rp>` → Borrar | `delete-wrprc <id>` |
+| una entrada de una lista | `/lists` → Editar | `remove-provider <lista> <índice\|nombre>` |
+| lo publicado de una lista | `/lists` → Retirar | `unpublish <lista>` |
+
+El aviso dice **qué se rompe, con nombres**:
+
+```
+$ node apps/cli/index.mjs delete-key tl-signer
+error: no se borra "tl-signer": 4 cosa(s) dependen de el
+  · av-lab esta firmada por esta clave
+  · status-wrprc esta firmada por esta clave
+  · wrpac-lab esta firmada por esta clave
+  · wrprc-lab esta firmada por esta clave
+  · repite con force para borrarlo igualmente y dejar esas cadenas rotas
+```
+
+Dos matices que importan:
+
+- **`unpublish` no toca el documento.** Retira la versión publicada —el
+  publisher devuelve 404 desde ese momento— y deja el estado intacto para
+  corregirlo y reemitir. Es lo que hace falta cuando una lista salió con un
+  ancla que no encadena.
+- **Borrar una RP se lleva sus propios certificados** (access certificates y
+  WRPRC) porque son suyos, pero **no** libera su posición de revocación en
+  silencio: la posición queda libre para la siguiente alta y la lista sigue
+  diciendo lo que dijera hasta que la reemitas.
+
+### 6.3 Empezar de cero
+
+Si el almacén quedó con material mal encadenado y prefieres remontarlo:
+
+```bash
+# local (almacén de fichero): las claves y lo emitido viven en out/
+rm -rf out/
+git checkout state/          # devuelve los documentos a su estado sembrado
+
+# Railway (Postgres): desde la consola de la base de datos
+DROP TABLE IF EXISTS artifacts, keys, docs;
+```
+
+Al arrancar contra una base vacía, el servicio vuelve a sembrar `state/`.
+
+⚠ **Borrar `keys` es irreversible**: las privadas están cifradas ahí y en
+ningún otro sitio. Lo que ya hubieras entregado a alguien deja de poder
+reemitirse igual. Y recuerda que **las listas sembradas traen anclas
+inservibles**: después de remontar hay que quitarlas (§5.3), o volverás a
+tener el mismo problema.
+
+---
+
+## 7. Descargar el material
 
 Los certificados se emiten aquí pero se **usan fuera**: el access certificate lo
 instala la RP en su despliegue y el WRPRC viaja dentro de la petición OID4VP. La
@@ -415,7 +503,7 @@ línea en el log del servicio.
 
 ---
 
-## 7. Apuntar una wallet al laboratorio
+## 8. Apuntar una wallet al laboratorio
 
 Es para lo que existe todo lo anterior. Para que una wallet valide contra este
 marco necesita, según lo que esté comprobando:
@@ -438,7 +526,7 @@ descubre siguiendo las listas.
 
 ---
 
-## 8. Referencia
+## 9. Referencia
 
 ### Pantallas de la consola
 
@@ -450,6 +538,7 @@ descubre siguiendo las listas.
 | `/rps` | relying parties, alta de nuevas |
 | `/rps/:id` | servicios, finalidades, emisión y descarga de sus certificados |
 | `/status` | posiciones de revocación |
+| `/graph` | el grafo dibujado y las cadenas que no llegan a ningún ancla |
 | `/docs/:id` | editor JSON de cualquier documento, con validación al guardar |
 
 ### Comandos del CLI
@@ -470,6 +559,12 @@ add-entity <estado> <clave-emisión> "<nombre>" [clave-revocación]   ancla en u
 remove-provider <estado> <índice|nombre>            quita una entrada
 build-list <estado> <firmante>                      firma la AV TL (XML)
 build-lote <estado> <firmante>                      firma una LoTE (JSON/JWS)
+
+graph [mermaid]                                     el grafo de dependencias
+delete-key <nombre> [force]                         borra clave + certificado
+delete-rp <id> [force]                              borra registro + sus certificados
+delete-wrprc <id>                                   borra un WRPRC emitido
+unpublish <estado>                                  retira lo publicado, deja el documento
 
 status-set <estado> <posición> <valid|invalid|suspended> ["motivo"]
 status-build <estado> <firmante>
@@ -500,7 +595,7 @@ se rechaza la operación. Rotarla deja ilegible el material ya guardado.
 
 ---
 
-## 9. Cosas que muerden
+## 10. Cosas que muerden
 
 **El disco de Railway es efímero.** Si la consola arrancara con almacén de
 fichero, cada despliegue se llevaría las claves y los artefactos. Por eso el

@@ -19,6 +19,8 @@ import { assertRegistry } from '../../packages/registry/src/index.mjs';
 import { describeKey, assertTlsoProfile, SIGNER_ROLES } from '../../packages/ca/src/index.mjs';
 import { readiness, rpReadiness, tlsoCandidates, signingCandidates } from './readiness.mjs';
 import * as views from './views.mjs';
+import { buildGraph, danglingChains } from '../../packages/graph/src/index.mjs';
+import { graphSvg } from './graph-svg.mjs';
 
 const crypto = new Crypto();
 cryptoProvider.set(crypto);
@@ -192,6 +194,20 @@ const server = createServer(async (req, res) => {
     // clave privada en una pestana. El publisher NO tiene ninguna de estas
     // rutas: no puede descifrar claves y no debe servir WRPRC, que no es
     // material publicado sino material que se entrega a su titular.
+    if (path === '/graph.svg' && req.method === 'GET') {
+      const g = await buildGraph(store);
+      return send(res, 200, graphSvg(g, { dangling: danglingChains(g) }), {
+        'Content-Type': 'image/svg+xml',
+        'Content-Disposition': 'attachment; filename="trust-lab-dependencias.svg"',
+      });
+    }
+
+    if (path === '/graph' && req.method === 'GET') {
+      const g = await buildGraph(store);
+      const roto = danglingChains(g);
+      return send(res, 200, views.graphPage({ svg: graphSvg(g, { dangling: roto }), graph: g, dangling: roto, flash }));
+    }
+
     if (parts[0] === 'download' && req.method === 'GET') {
       let out;
       try {
@@ -240,6 +256,37 @@ const server = createServer(async (req, res) => {
       return run(res, '/keys', () =>
         ops.mintTlso(store, crypto, { name: form.get('name'), schemeId: form.get('scheme') }),
         (r) => `Firmante ${r.name} emitido: ${r.subject}`);
+    }
+
+    // ---- borrado ----
+    // El aviso lo da la operacion, que consulta el grafo. La confirmacion del
+    // navegador es cortesia; la comprobacion de verdad es server-side.
+    if (parts[0] === 'delete' && parts.length === 3) {
+      const force = form.get('force') === '1';
+      const [, tipo, id] = parts;
+      const back = { key: '/keys', rp: '/rps', wrprc: `/rps/${form.get('rp') ?? ''}`, list: '/lists' }[tipo] ?? '/';
+      if (tipo === 'key') {
+        return run(res, back, () => ops.deleteKey(store, { name: decodeURIComponent(id), force }),
+          (r) => `Borrada ${r.deleted}.` + (r.broke.length ? ` Rotas ${r.broke.length} cadena(s).` : ''));
+      }
+      if (tipo === 'rp') {
+        return run(res, '/rps', () => ops.deleteRp(store, { id: decodeURIComponent(id), force }),
+          (r) => `Borrado ${r.deleted}` + (r.retirados.length ? ` y ${r.retirados.length} artefacto(s) suyos.` : '.'));
+      }
+      if (tipo === 'wrprc') {
+        return run(res, back, () => ops.deleteWrprc(store, { id: decodeURIComponent(id) }),
+          (r) => `Borrado el WRPRC ${r.deleted}. El registro y su posicion de revocacion se quedan.`);
+      }
+      if (tipo === 'unpublish') {
+        return run(res, '/lists', () => ops.unpublish(store, { id: decodeURIComponent(id) }),
+          (r) => `Retirada la version #${r.retirada} de ${r.id}: ${r.url} deja de servirse hasta reemitir.`);
+      }
+      return send(res, 404, 'no existe');
+    }
+
+    if (parts[0] === 'lists' && parts[2] === 'remove-provider') {
+      return run(res, '/lists', () => ops.removeProvider(store, { id: parts[1], ref: form.get('ref') }),
+        (r) => `Quitado "${r.removed}" de ${r.id}. No publica: hay que reemitir la lista.`);
     }
 
     if (path === '/keys/signer') {

@@ -40,6 +40,9 @@ export function memoryStore() {
       async list() {
         return [...keys.keys()];
       },
+      async delete(name) {
+        keys.delete(name);
+      },
     },
     artifacts: {
       async put(a) {
@@ -56,6 +59,11 @@ export function memoryStore() {
       },
       async list(kind, id) {
         return artifacts.filter((a) => a.kind === kind && a.id === id);
+      },
+      async delete(kind, id) {
+        for (let i = artifacts.length - 1; i >= 0; i -= 1) {
+          if (artifacts[i].kind === kind && artifacts[i].id === id) artifacts.splice(i, 1);
+        }
       },
     },
   };

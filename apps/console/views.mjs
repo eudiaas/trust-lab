@@ -40,6 +40,7 @@ p.lead { color:var(--dim); margin:0 0 1.6rem }
 .pill.dim { color:var(--dim); border-color:var(--border) }
 ul.blockers { margin:.4rem 0 0; padding-left:1.1rem; color:var(--warn); font-size:.88rem }
 form.inline { display:inline-flex; gap:.4rem; align-items:center; margin:.5rem .5rem 0 0 }
+    button.danger { color:var(--bad); border-color:#da363355; background:#da36330f }
     .row { display:flex; gap:.4rem; flex-wrap:wrap; align-items:center }
 select, input[type=text], input[type=password], textarea {
   background:var(--surface-2); color:var(--text); border:1px solid var(--border);
@@ -59,6 +60,12 @@ th { color:var(--dim); font-weight:600; font-size:.8rem; text-transform:uppercas
 .note { color:var(--dim); font-size:.85rem; margin-top:.4rem }
 `;
 
+/** Boton de borrado: confirma en el navegador y comprueba en el servidor. */
+function delButton(action, label, aviso, extra = '') {
+  return `<form class="inline" method="post" action="${action}"
+    onsubmit="return confirm(${JSON.stringify(aviso)})">${extra}<button class="danger">${label}</button></form>`;
+}
+
 export function layout({ title, path, body, flash }) {
   const nav = [
     ['/', 'Estado'],
@@ -66,6 +73,7 @@ export function layout({ title, path, body, flash }) {
     ['/lists', 'Listas'],
     ['/rps', 'Relying parties'],
     ['/status', 'Revocacion'],
+    ['/graph', 'Dependencias'],
   ]
     .map(([href, label]) => `<a href="${href}" class="${path === href ? 'on' : ''}">${label}</a>`)
     .join('');
@@ -146,7 +154,7 @@ export function dashboard({ items, rps, signers, flash }) {
     }
     <h2>Listas</h2>${cards || '<p class="meta">No hay ninguna lista definida.</p>'}
     <h2>Relying parties</h2>
-    <table><tr><th>Entidad</th><th>Registro</th><th>Servicios</th><th>Finalidades</th></tr>${rpRows}</table>`,
+    <table><tr><th>Entidad</th><th>Registro</th><th>Servicios</th><th>Finalidades</th><th></th></tr>${rpRows}</table>`,
   });
 }
 
@@ -173,7 +181,9 @@ export function rpsPage({ rps, statusLists = [], flash }) {
         (rp) => `<tr><td><a href="/rps/${encodeURIComponent(rp.id)}">${esc(rp.legalName ?? rp.id)}</a></td>
         <td>${rp.problems.length ? `<span class="pill bad">${rp.problems.length} problema(s)</span>` : '<span class="pill ok">valida</span>'}</td>
         <td>${rp.services.map((s) => esc(s.name)).join(', ')}</td>
-        <td>${rp.services.reduce((n, s) => n + s.uses.length, 0)}</td></tr>`,
+        <td>${rp.services.reduce((n, s) => n + s.uses.length, 0)}</td>
+        <td>${delButton(`/delete/rp/${encodeURIComponent(rp.id)}`, 'Borrar',
+          `Borra el registro de ${rp.legalName ?? rp.id} junto con sus access certificates y sus WRPRC. Las posiciones de revocacion quedan libres.`)}</td></tr>`,
       )
       .join('')}</table>
 
@@ -231,7 +241,9 @@ export function keysPage({ keys, cas = [], roles = {}, schemes, flash }) {
             : ' <span class="pill ok">5.7.1</span>'
           : ''
       }</td>
-      <td class="meta">${keyLinks(k.name)}</td></tr>`,
+      <td class="meta">${keyLinks(k.name)}
+      ${delButton(`/delete/key/${encodeURIComponent(k.name)}`, 'Borrar',
+        `Borra la clave ${k.name} y su certificado. Si algo depende de ella, la operacion se rechaza y te dice que.`)}</td></tr>`,
     )
     .join('');
 
@@ -362,7 +374,10 @@ export function rpPage({ rp, statusLists, signers, cas, flash }) {
             u.published
               ? `<span class="pill ok">emitido</span> <a href="/download/wrprc/${encodeURIComponent(
                   u.artifactId,
-                )}">descargar .jwt</a>`
+                )}">descargar .jwt</a>
+                ${delButton(`/delete/wrprc/${encodeURIComponent(u.artifactId)}`, 'Borrar',
+                  `Borra el WRPRC ${u.artifactId}. El registro y su posicion de revocacion se quedan, asi que se puede reemitir.`,
+                  `<input type="hidden" name="rp" value="${esc(rp.id)}">`)}`
               : '<span class="pill dim">no emitido</span>'
           }
           <form class="inline" method="post" action="/rps/${encodeURIComponent(rp.id)}/wrprc">
@@ -440,8 +455,51 @@ export function listsPage({ items, flash }) {
         (i) => `<tr><td>${esc(i.title)}<div class="meta mono">${esc(i.id)}</div></td>
         <td class="meta">${esc(i.type)}</td><td>${i.entries}</td>
         <td>${i.published ? `#${i.published.sequence}` : '—'} ${badge(i)}</td>
-        <td><a href="/docs/${encodeURIComponent(i.id)}">Editar</a></td></tr>`,
+        <td><a href="/docs/${encodeURIComponent(i.id)}">Editar</a>
+        ${
+          i.published
+            ? delButton(`/delete/unpublish/${encodeURIComponent(i.id)}`, 'Retirar',
+                `Retira la version publicada de ${i.id}. ${i.url ?? ''} deja de servirse hasta que se reemita. El documento no se toca.`)
+            : ''
+        }</td></tr>`,
       )
       .join('')}</table>`,
+  });
+}
+
+
+/**
+ * El grafo dibujado, con la lista de cadenas rotas debajo.
+ *
+ * El dibujo responde a la pregunta «como esta montado esto»; la lista, a «que
+ * esta mal». Las dos salen del MISMO grafo que consulta el borrado, asi que no
+ * pueden discrepar.
+ */
+export function graphPage({ svg, graph, dangling, flash }) {
+  const cols = ['firma las listas', 'listas', 'anclas publicadas', 'lo que cuelga de ellas', 'emitido'];
+  return layout({
+    title: 'Dependencias',
+    path: '/graph', flash,
+    body: `<h1>Dependencias criptograficas</h1>
+    <p class="lead">De izquierda a derecha va la direccion de la confianza: quien firma
+    → la lista → lo que la lista publica como ancla → lo que cuelga de ello → lo emitido.
+    Un artefacto vale si su cadena termina en un ancla publicada; nada mas.</p>
+    <div class="meta">${cols.map((c, i) => `<b>${i + 1}.</b> ${esc(c)}`).join(' · ')}</div>
+    ${
+      dangling.length
+        ? `<div class="flash bad">${esc(
+            `${dangling.length} cadena(s) no llegan a ningun ancla:\n` +
+              dangling.map((d) => `· ${d.label}: ${d.why}`).join('\n'),
+          )}</div>`
+        : '<div class="flash ok">Todas las cadenas terminan en un ancla publicada.</div>'
+    }
+    <div class="card" style="overflow-x:auto">${svg}</div>
+    <p class="note">En rojo, lo que no encadena con nada: incluye las <strong>anclas
+    huerfanas</strong> —certificados publicados en una lista cuya clave privada no esta en
+    este almacen, que es como vienen sembradas las listas— y cualquier certificado emitido
+    bajo una CA que ninguna lista publica. Los dos casos producen artefactos que firman
+    bien y que una wallet rechaza.</p>
+    <p class="meta">${graph.nodes.length} nodos · ${graph.edges.length} aristas ·
+    <a href="/graph.svg">descargar SVG</a></p>`,
   });
 }

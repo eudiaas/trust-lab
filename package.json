@@ -13,6 +13,7 @@
     "@owf/eudi-lote": "^0.3.2",
     "@owf/eudi-tl": "0.4.0-alpha-20260901082001",
     "@owf/eudi-wrprc": "^0.3.2",
+    "@owf/token-status-list": "^0.3.2",
     "@peculiar/webcrypto": "^1.5.0",
     "@peculiar/x509": "^2.0.0",
     "@xmldom/xmldom": "^0.9.12",

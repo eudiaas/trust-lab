@@ -1,42 +1,106 @@
 {
-  "_comment": "Registro de una relying party. GEN-6.6.1-10 de TS 119 411-8: los atributos del access certificate se derivan de la información del registro (TS 119 475 §5.1.2), así que WRPAC y WRPRC salen de este mismo fichero y no pueden derivar.",
-
-  "identity": {
-    "country": "ES",
+  "_model": "TS5 (Common formats and API for RP Registration information) + TS6 (Common set of RP information to be registered). Es el registro que guardaría un Registrar nacional: de aquí salen el access certificate (GEN-6.6.1-10 de TS 119 411-8) y un registration certificate por cada intendedUse.",
+  "walletRelyingParty": {
     "legalName": "espuni S.L.",
     "tradeName": "espuni",
-    "organizationIdentifier": "VATES-B12345678",
-    "registryUri": "https://trust-lab.espuni.com/registry/es/VATES-B12345678"
+    "identifier": [
+      {
+        "type": "http://data.europa.eu/eudi/id/VATIN",
+        "value": "B12345678",
+        "country": "ES",
+        "primary": true
+      }
+    ],
+    "postalAddress": {
+      "streetAddress": "Calle de Prueba 1",
+      "locality": "Madrid",
+      "postalCode": "28001",
+      "country": "ES"
+    },
+    "infoURI": "https://espuni.com",
+    "isPSB": false,
+    "registryURI": "https://trust-lab.espuni.com/registry/es/VATES-B12345678",
+    "supervisoryAuthority": {
+      "name": "Agencia Espanola de Proteccion de Datos",
+      "country": "ES",
+      "email": [
+        "internacional@aepd.es"
+      ],
+      "formURI": [
+        "https://sedeagpd.gob.es/sede-electronica-web/"
+      ]
+    },
+    "services": [
+      {
+        "serviceTradeName": "espuni age verification",
+        "serviceIdentifier": "av-1",
+        "supportURI": "https://espuni.com/support",
+        "email": "soporte@espuni.com",
+        "srvDescription": [
+          {
+            "lang": "en",
+            "content": "Age verification for online services under Article 28 of the Digital Services Act"
+          },
+          {
+            "lang": "es",
+            "content": "Verificacion de edad para servicios en linea conforme al articulo 28 del Reglamento de Servicios Digitales"
+          }
+        ],
+        "entitlements": [
+          "https://uri.etsi.org/19475/Entitlement/Service_Provider"
+        ],
+        "isIntermediary": false,
+        "intendedUses": [
+          {
+            "intendedUseIdentifier": "av-over-18",
+            "createdAt": "2026-09-07",
+            "purpose": [
+              {
+                "lang": "en",
+                "content": "Confirm that the user is over 18 before granting access to age-restricted content"
+              },
+              {
+                "lang": "es",
+                "content": "Confirmar que la persona usuaria es mayor de 18 anos antes de dar acceso a contenido restringido por edad"
+              }
+            ],
+            "privacyPolicy": [
+              {
+                "uri": "https://espuni.com/privacy",
+                "type": "PrivacyStatement"
+              }
+            ],
+            "credentials": [
+              {
+                "format": "mso_mdoc",
+                "meta": {
+                  "doctype_value": "eu.europa.ec.av.1"
+                },
+                "claims": [
+                  {
+                    "path": [
+                      "eu.europa.ec.av.1",
+                      "age_over_18"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
   },
-
-  "supervisoryAuthority": {
-    "name": "Agencia Espanola de Proteccion de Datos",
-    "country": "ES",
-    "email": "internacional@aepd.es"
-  },
-
   "wrpac": {
-    "commonName": "espuni age verification",
     "policy": "NCP-l-eudiwrp",
     "cpsUri": "https://trust-lab.espuni.com/cps",
-    "contact": { "uri": "https://espuni.com/support", "email": "soporte@espuni.com" },
     "validityDays": 365
   },
-
-  "useCases": [
-    {
-      "id": "age-verification",
-      "serviceDescription": "Age verification for online services under Article 28 of the Digital Services Act",
-      "purpose": "Confirm that the user is over 18 before granting access to age-restricted content",
-      "privacyPolicy": "https://espuni.com/privacy",
-      "entitlements": ["SERVICE_PROVIDER"],
-      "credentials": [
-        {
-          "format": "mso_mdoc",
-          "doctype": "eu.europa.ec.av.1",
-          "claims": [["eu.europa.ec.av.1", "age_over_18"]]
-        }
-      ]
+  "statusList": {
+    "listId": "status-wrprc",
+    "uri": "https://trust-lab.espuni.com/status/wrprc",
+    "indexByIntendedUse": {
+      "av-over-18": 7
     }
-  ]
+  }
 }

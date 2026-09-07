@@ -66,56 +66,75 @@ export function detectEdition(header, payload) {
 
 const SA_FIELDS_V121 = EDITIONS['v1.2.1'].supervisoryAuthority.fields;
 
-/** Recorta la autoridad de control a lo que la edición vigente admite. */
+/**
+ * Recorta la autoridad de control a lo que la edición vigente del certificado
+ * admite, y aplana los arrays de TS5 (`email[]`, `phone[]`, `formURI[]`) al
+ * escalar que espera el certificado.
+ */
 function pickSupervisoryAuthority(sa = {}) {
-  return Object.fromEntries(Object.entries(sa).filter(([k]) => SA_FIELDS_V121.includes(k)));
+  const first = (v) => (Array.isArray(v) ? v[0] : v);
+  const out = {};
+  if (sa.email) out.email = first(sa.email);
+  if (sa.phone) out.phone = first(sa.phone);
+  if (sa.formURI ?? sa.uri) out.uri = first(sa.formURI ?? sa.uri);
+  return out;
 }
 
-/** Campos del registro que la edición vigente ya no transporta. */
+/**
+ * Lo que el registro TS5 declara y el certificado v1.2.1 no puede transportar.
+ *
+ * No es una curiosidad: TS5 §2.4.7 marca `name` y `country` de la autoridad de
+ * control como [1..1] **citando el requisito RPRC_12 del ARF**, que dice que
+ * el registration certificate «shall contain the name and country of the
+ * supervisory authority». La tabla de ETSI TS 119 475 v1.2.1 no los tiene: su
+ * `supervisory_authority` es sólo `{ email, phone, uri }`. O sea que las dos
+ * especificaciones se contradicen, y el certificado emitido cumple una a costa
+ * de la otra. Se avisa en cada emisión en vez de descartarlo en silencio.
+ */
 export function droppedByEdition(registry) {
-  return Object.keys(registry.supervisoryAuthority ?? {})
-    .filter((k) => !SA_FIELDS_V121.includes(k))
-    .map((k) => `supervisoryAuthority.${k} (existía en v1.1.1 como dpa.${k}, fuera del esquema en v1.2.1)`);
+  const sa = registry.walletRelyingParty?.supervisoryAuthority ?? {};
+  return ['name', 'country']
+    .filter((k) => sa[k] !== undefined)
+    .map((k) => `supervisoryAuthority.${k}="${sa[k]}" — TS5 §2.4.7 lo exige [1..1] citando ARF RPRC_12, pero la tabla de TS 119 475 v1.2.1 no lo transporta`);
 }
 
-/** Construye el payload de un caso de uso del registro. Un WRPRC = un caso de uso. */
-export function buildWrprc(registry, useCaseId, { issuedAt = new Date(), statusListUri, statusListIdx = 0 } = {}) {
-  const uc = registry.useCases.find((u) => u.id === useCaseId);
-  if (!uc) throw new Error(`caso de uso desconocido: ${useCaseId}`);
-  const id = registry.identity;
-
+/**
+ * Construye el payload de UN intended use. La cardinalidad 1:1 entre WRPRC e
+ * intended use la fija TS5 §2.4.4 ("issuance of RPRC is done separately for
+ * each Intended use of a Wallet-Relying Party Service").
+ *
+ * Recibe la salida de `toWrprcInput` del paquete `registry`: la traducción
+ * TS5 → ETSI vive allí, y aquí sólo se construye.
+ */
+export function buildWrprc(input, { issuedAt = new Date(), statusListUri, statusListIdx = 0 } = {}) {
   const b = wrprc()
-    .name(id.tradeName ?? id.legalName)
-    .legalName(id.legalName)
-    .identifier(id.organizationIdentifier)
-    .country(id.country)
-    .registryUri(id.registryUri)
-    .serviceDescription(uc.serviceDescription, 'en')
-    .privacyPolicy(uc.privacyPolicy)
-    .addPurpose(uc.purpose, 'en')
-    // v1.2.1 identifica a la autoridad de control sólo por contacto. Pasarle
-    // name/country no da error: los descarta en silencio, que es peor. Se
-    // recortan aquí a propósito y se avisa arriba.
-    .supervisoryAuthority(pickSupervisoryAuthority(registry.supervisoryAuthority))
+    .name(input.tradeName)
+    .legalName(input.legalName)
+    .identifier(input.identifier)
+    .country(input.country)
+    .registryUri(input.registryUri)
+    .privacyPolicy(input.privacyPolicy)
     .issuedAt(issuedAt);
 
-  for (const e of uc.entitlements) {
-    const uri = WRP_ENTITLEMENTS[e] ?? e;
-    b.addEntitlement(uri);
-  }
+  for (const d of input.srvDescription) b.serviceDescription(d.value, d.lang);
+  for (const p of input.purpose) b.addPurpose(p.value, p.lang);
+  for (const e of [...input.entitlements, ...(input.subEntitlements ?? [])]) b.addEntitlement(e);
+  if (input.supportUri) b.supportUri(input.supportUri);
+  if (input.infoUri) b.infoUri(input.infoUri);
+  b.supervisoryAuthority(pickSupervisoryAuthority(input.supervisoryAuthority));
 
-  for (const c of uc.credentials) {
+  for (const c of input.credentials) {
     const cb = credential().format(c.format);
-    if (c.format === 'mso_mdoc') cb.mdocMeta(c.doctype);
-    else cb.sdJwtMeta(c.vct);
-    // Selective disclosure: cada claim es una ruta, y la lista es exactamente
-    // lo que el RP queda autorizado a pedir. Es el control anti-overasking.
-    for (const path of c.claims ?? []) cb.addPathClaim(...path);
+    if (c.meta?.doctype_value) cb.mdocMeta(c.meta.doctype_value);
+    else if (c.meta?.vct_values) cb.sdJwtMeta(c.meta.vct_values);
+    // Selective disclosure: la lista de claims ES lo que el RP queda
+    // autorizado a pedir. Es el control anti-overasking, no metadatos.
+    for (const claim of c.claims ?? []) cb.addPathClaim(...claim.path);
     b.addCredential(cb.build());
   }
 
   if (statusListUri) b.status({ status_list: { idx: statusListIdx, uri: statusListUri } });
-  if (uc.intermediary) b.intermediary(uc.intermediary);
+  if (input.intermediary) b.intermediary(input.intermediary);
 
   return b.build();
 }

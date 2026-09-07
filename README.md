@@ -105,6 +105,12 @@ Dos comprobaciones corren en cada `build-list` y **abortan la emisión** si fall
   (manipular el payload o cambiar de firmante la rechaza con
   `ERR_JWS_SIGNATURE_VERIFICATION_FAILED`).
 
+- `assertRegistry(reg)` — multiplicidades de TS5 §2.1/§2.4.1 y mínimos de TS6:
+  `isPSB` obligatorio, la DPA con nombre y país, al menos un contacto por
+  servicio, `serviceIdentifier` obligatorio si se usa intermediario,
+  `providesAttestations` si hay entitlement de proveedor, y los tipos de
+  identificador acotados a los de TS 119 475 tabla 2.
+
 No son decorativas: firmar la lista con una CA normal, o cambiar un URI del
 perfil AV, aborta la emisión con el detalle en pantalla.
 
@@ -123,19 +129,47 @@ comprobaciones del perfil AV a avisos.
 
 ## Un registro, dos certificados
 
-`state/<rp>.json` es **el registro de la relying party**, y de él salen sus dos
-certificados. No es orden: GEN-6.6.1-10 de TS 119 411-8 dice que los atributos
-del access certificate *"shall be derived from the information held in the
-register as specified in clause 5.1.2 of ETSI TS 119 475"*. Dos ficheros
-separados podrían derivar; uno solo, no.
+`state/<rp>.json` es **el registro de la relying party**, con el modelo de datos
+de **TS5** y los mínimos de **TS6** — el que guardaría un Registrar nacional. De
+ahí salen los dos certificados, y no por gusto: GEN-6.6.1-10 de TS 119 411-8
+dice que los atributos del access certificate *"shall be derived from the
+information held in the register as specified in clause 5.1.2 of ETSI
+TS 119 475"*.
 
-```bash
-node apps/cli/index.mjs mint-wrpac   wrpac-issuing-ca espuni-access state/espuni-rp.json
-node apps/cli/index.mjs issue-wrprc  state/espuni-rp.json age-verification tl-signer
+La jerarquía de TS5 tiene un nivel que un modelo improvisado se salta:
+
+```
+WalletRelyingParty            ← la entidad legal registrada
+  └── services[]              ← WalletRelyingPartyService
+        └── intendedUses[]    ← un WRPRC por cada uno
+              └── credentials[] → claims[]
 ```
 
-Un WRPRC = **un caso de uso** (cardinalidad 1:1 de la norma), así que
-`useCases[]` del registro es la lista de certificados que ese RP puede tener.
+El nivel «servicio» no está en el reglamento: TS5 lo añade para que un RP pueda
+separar instancias, certificados de acceso y finalidades. Y el identificador
+semántico (`VATES-B12345678`) se **deriva** del identificador tipado del
+registro en vez de escribirse a mano en los dos certificados.
+
+```bash
+node apps/cli/index.mjs mint-wrpac  wrpac-issuing-ca espuni-access state/espuni-rp.json av-1
+node apps/cli/index.mjs issue-wrprc state/espuni-rp.json av-1 av-over-18 tl-signer
+```
+
+## Revocación, de punta a punta
+
+El WRPRC lleva `status.status_list = { idx, uri }` apuntando a una lista propia,
+así que "certificado de registro revocado" deja de ser una frase y pasa a ser
+un caso ejecutable:
+
+```bash
+node apps/cli/index.mjs status-check status-wrprc 7 tl-signer   # → valid
+node apps/cli/index.mjs status-set   status-wrprc 7 invalid "intended use retirado"
+node apps/cli/index.mjs status-build status-wrprc tl-signer
+node apps/cli/index.mjs status-check status-wrprc 7 tl-signer   # → invalid
+```
+
+La lista se reserva entera de golpe (1024 posiciones) en vez de crecer con cada
+revocación: una lista que crece filtra cuántos certificados hay vivos.
 
 ## v1.1.1 contra v1.2.1: seis cambios que rompen
 

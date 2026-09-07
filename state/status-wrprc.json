@@ -1,0 +1,16 @@
+{
+  "id": "status-wrprc",
+  "kind": "token-status-list",
+  "url": "https://trust-lab.espuni.com/status/wrprc",
+  "bits": 1,
+  "size": 1024,
+  "expiresInDays": 30,
+  "sequenceNumber": 2,
+  "entries": {
+    "7": {
+      "status": "invalid",
+      "note": "intended use retirado por el RP",
+      "changedAt": "2026-09-07T13:51:30.975Z"
+    }
+  }
+}

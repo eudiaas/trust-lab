@@ -9,6 +9,8 @@ import { TrustedListProfiles, loadTrustedList, getTrustAnchors } from '@owf/eudi
 import { mintCa, mintLeaf, mintTlSigner, assertTlsoProfile } from '../../packages/ca/src/index.mjs';
 import { mintWrpac, assertWrpacProfile, WRPAC_POLICY } from '../../packages/ca/src/wrpac.mjs';
 import { buildWrprc, signWrprcCompact, assertWrprc, decodeWRPRC, detectEdition, droppedByEdition } from '../../packages/wrprc/src/index.mjs';
+import { assertRegistry, toWrpacSpec, toWrprcInput } from '../../packages/registry/src/index.mjs';
+import { signStatusListCompact, readStatus, STATUS_BY_NAME } from '../../packages/status/src/index.mjs';
 import { inMemorySigner } from '../../packages/signer/src/index.mjs';
 import { buildTrustedListXml, signTrustedListXml, assertAnnexB } from '../../packages/tl-xml/src/index.mjs';
 import { AV_TL_PROFILE, assertAvProfile } from '../../packages/tl-xml/src/av-profile.mjs';
@@ -32,6 +34,15 @@ async function exportKeyChain(name, material) {
     crt: material.chainPem ?? [material.pem],
   });
   return material;
+}
+
+function assertRegistryOrExit(registry) {
+  const problems = assertRegistry(registry);
+  if (problems.length) {
+    console.error('el registro no cumple el modelo de TS5/TS6:');
+    for (const p of problems) console.error('  · ' + p);
+    process.exit(1);
+  }
 }
 
 const cmds = {
@@ -98,8 +109,10 @@ const cmds = {
   //   Access certificate de relying party con el perfil de TS 119 411-8.
   async 'mint-wrpac'([caName, name, registryPath]) {
     const registry = await readJson(registryPath);
-    // GEN-6.6.1-10: los atributos salen del registro, no de un fichero aparte.
-    const spec = { ...registry.identity, ...registry.wrpac, organization: registry.identity.legalName };
+    assertRegistryOrExit(registry);
+    // GEN-6.6.1-10: los atributos se derivan del registro TS5, no se repiten.
+    const serviceId = process.argv[6] ?? registry.walletRelyingParty.services[0].serviceIdentifier;
+    const spec = toWrpacSpec(registry, serviceId);
     const stored = await readJson(join(ROOT, `out/keys/${caName}.json`));
     const caKey = await crypto.subtle.importKey('jwk', stored.key,
       { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']);
@@ -118,16 +131,22 @@ const cmds = {
     console.log(`  política ${wrpac.policy} (${wrpac.policyOid}) · perfil 6.6.1 · OK`);
   },
 
-  // trustlab issue-wrprc <fichero-registro> <caso-de-uso> <clave-firmante>
-  //   Registration certificate para UN caso de uso (TS 119 475: cardinalidad 1:1).
-  async 'issue-wrprc'([registryPath, useCaseId, signerName]) {
+  // trustlab issue-wrprc <registro> <servicio> <intended-use> <clave-firmante>
+  //   Un WRPRC por intended use (TS5 §2.4.4: cardinalidad 1:1).
+  async 'issue-wrprc'([registryPath, serviceId, useId, signerName]) {
     const registry = await readJson(registryPath);
+    assertRegistryOrExit(registry);
     const stored = await readJson(join(ROOT, `out/keys/${signerName}.json`));
     const key = await crypto.subtle.importKey('jwk', stored.key,
       { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']);
 
-    const payload = buildWrprc(registry, useCaseId, {
-      statusListUri: registry.statusListUri,
+    // El WRPRC apunta a su posición en la status list: es lo que permite
+    // revocarlo después sin reemitir nada.
+    const sl = registry.statusList;
+    const idx = sl?.indexByIntendedUse?.[useId];
+    const payload = buildWrprc(toWrprcInput(registry, serviceId, useId), {
+      statusListUri: sl?.uri,
+      statusListIdx: idx,
     });
     const problems = assertWrprc(payload);
     if (problems.length) {
@@ -140,14 +159,57 @@ const cmds = {
     const jwt = await signWrprcCompact(payload, signer, signerName);
 
     await mkdir(join(ROOT, 'out/wrprc'), { recursive: true });
-    const outPath = join(ROOT, `out/wrprc/${registry.identity.organizationIdentifier}-${useCaseId}.jwt`);
+    const outPath = join(ROOT, `out/wrprc/${serviceId}-${useId}.jwt`);
     await writeFile(outPath, jwt);
 
     const back = decodeWRPRC(jwt);
-    console.log(`WRPRC ${useCaseId} → ${outPath}`);
+    console.log(`WRPRC ${serviceId}/${useId} → ${outPath}`);
     console.log(`  sujeto ${payload.sub?.legal_name ?? payload.name} · ${payload.entitlements.length} entitlement(s)`);
     console.log(`  edición detectada al releerlo: ${detectEdition(back.header ?? {}, back.payload ?? back)}`);
+    if (idx !== undefined) console.log(`  revocable en ${sl.uri} posición ${idx}`);
     for (const d of droppedByEdition(registry)) console.log(`  ⚠ no viaja en el certificado: ${d}`);
+  },
+
+  // trustlab status-set <estado> <posición> <valid|invalid|suspended> ["motivo"]
+  async 'status-set'([stateId, idx, status, note]) {
+    if (!(status in STATUS_BY_NAME)) throw new Error(`estado desconocido: ${status}`);
+    const statePath = join(ROOT, `state/${stateId}.json`);
+    const state = await readJson(statePath);
+    state.entries[idx] = { status, ...(note ? { note } : {}), changedAt: new Date().toISOString() };
+    await writeJson(statePath, state);
+    console.log(`posición ${idx} → ${status}${note ? ` (${note})` : ''}`);
+  },
+
+  // trustlab status-build <estado> <clave-firmante>
+  async 'status-build'([stateId, signerName]) {
+    const statePath = join(ROOT, `state/${stateId}.json`);
+    const state = await readJson(statePath);
+    const stored = await readJson(join(ROOT, `out/keys/${signerName}.json`));
+    const key = await crypto.subtle.importKey('jwk', stored.key,
+      { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']);
+
+    state.sequenceNumber += 1;
+    const signer = inMemorySigner(key, stored.crt, crypto);
+    const jwt = await signStatusListCompact(state, signer);
+
+    await mkdir(join(ROOT, 'out/status'), { recursive: true });
+    const outPath = join(ROOT, `out/status/${stateId}.jwt`);
+    await writeFile(outPath, jwt);
+    await writeJson(statePath, state);
+
+    const revoked = Object.entries(state.entries).filter(([, e]) => e.status !== 'valid');
+    console.log(`status list ${stateId} #${state.sequenceNumber} → ${outPath}`);
+    console.log(`  ${state.size} posiciones · ${state.bits} bit(s) · ${revoked.length} no válida(s)`);
+    console.log(`  servir con Content-Type: application/statuslist+jwt en ${state.url}`);
+  },
+
+  // trustlab status-check <estado> <posición> <clave-firmante>
+  async 'status-check'([stateId, idx, signerName]) {
+    const state = await readJson(join(ROOT, `state/${stateId}.json`));
+    const stored = await readJson(join(ROOT, `out/keys/${signerName}.json`));
+    const jwt = await readFile(join(ROOT, `out/status/${stateId}.jwt`), 'utf8');
+    const r = await readStatus(jwt, stored.crt[0], Number(idx));
+    console.log(`posición ${idx} de ${r.sub} → ${r.status}`);
   },
 
   // trustlab add-entity <estado> <nombre-clave-emisión> "<nombre visible>" [nombre-clave-revocación]

@@ -189,9 +189,45 @@ payload)` que dice contra qué edición se emitió un certificado ajeno:
 Los campos que la edición vigente ya no transporta se avisan al emitir en vez
 de descartarse en silencio.
 
-## Aviso
+## El almacén
 
-Las claves privadas se escriben en `out/keys/*.json` **en claro**. Es material de
-laboratorio: `out/` no se commitea, y nada de esto vale fuera de un entorno de
-pruebas. El día que esto viva en CI, las claves salen de un secret store, que es
-justo lo que el contrato 2 deja abierto.
+`packages/store` separa el CLI del sitio donde vive el estado. Tres
+colecciones: `docs` (el estado explícito), `keys` (material criptográfico) y
+`artifacts` (**lo emitido y firmado, inmutable**).
+
+| | Fichero | Postgres |
+|---|---|---|
+| Se elige con | *(por defecto)* | `DATABASE_URL`, o `TRUST_LAB_PGLITE` para local |
+| Estado | `state/*.json` | tabla `docs` |
+| Claves | `out/keys/*.json` | tabla `keys` |
+| Artefactos | último en `out/`, historial en **git** | **todas** las versiones en `artifacts` |
+| Cifrado de claves | opcional | **obligatorio**, fail-closed |
+
+Los tres adaptadores —memoria, fichero y SQL— pasan la misma suite de
+conformidad, y el SQL se prueba contra **Postgres de verdad** vía PGlite (el
+motor compilado a WASM), no contra un simulacro:
+
+```bash
+node packages/store/test/conformance.mjs
+```
+
+### Por qué los artefactos se guardan enteros
+
+Un artefacto firmado **no se puede reconstruir a posteriori**: la firma depende
+de la clave, del instante y del orden de serialización. Guardar sólo el estado
+que lo generó no permite responder *"¿qué decía exactamente la lista el 7 de
+septiembre?"*. En fichero esa respuesta la daba git; en base de datos hay que
+guardar el byte, y por eso `artifacts` es inmutable y sin `ON CONFLICT`:
+reemitir con la misma secuencia es un error, no una actualización.
+
+### Las claves
+
+`TRUST_LAB_KEY` (32 bytes, hex o base64) cifra el material privado con
+AES-256-GCM. En SQL es **obligatoria**: sin ella el CLI falla en vez de escribir
+una clave privada en claro en una base de datos que se comparte y se respalda.
+Los certificados quedan legibles sin descifrar nada —son públicos, y poder
+listarlos es lo que hace operable el almacén—; sólo la privada va cifrada.
+
+En el almacén de fichero el cifrado es opcional: ahí el material no sale de la
+máquina del operador. Sigue siendo material de laboratorio y nada de esto vale
+fuera de un entorno de pruebas.

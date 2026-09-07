@@ -10,6 +10,7 @@
     "trustlab": "node apps/cli/index.mjs"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@owf/eudi-lote": "^0.3.2",
     "@owf/eudi-tl": "0.4.0-alpha-20260901082001",
     "@owf/eudi-wrprc": "^0.3.2",
@@ -18,6 +19,7 @@
     "@peculiar/x509": "^2.0.0",
     "@xmldom/xmldom": "^0.9.12",
     "jose": "^6.2.12",
+    "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
     "xadesjs": "^2.6.8",
     "xml-core": "^1.0.1"

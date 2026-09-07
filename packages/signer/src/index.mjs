@@ -25,10 +25,14 @@ export function inMemorySigner(privateKey, certificateChain, crypto) {
     certificateChain,
     cryptoKey: privateKey,
     async sign(data) {
+      // Los consumidores no coinciden en qué entregan: xadesjs pasa bytes y
+      // `signLoTE` pasa el signing input del JWS como string. Normalizar aquí
+      // —y no en cada llamador— es lo que mantiene la interfaz de una pieza.
+      const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
       const sig = await crypto.subtle.sign(
         { name: 'ECDSA', hash: 'SHA-256' },
         privateKey,
-        data,
+        bytes,
       );
       return new Uint8Array(sig);
     },
@@ -41,4 +45,9 @@ export function pemToBase64Der(pem) {
     .replace(/-----BEGIN CERTIFICATE-----/g, '')
     .replace(/-----END CERTIFICATE-----/g, '')
     .replace(/\s+/g, '');
+}
+
+/** base64url sin relleno — el encaje habitual de una firma en JOSE. */
+export function toBase64Url(bytes) {
+  return Buffer.from(bytes).toString('base64url');
 }

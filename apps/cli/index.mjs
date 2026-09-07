@@ -10,6 +10,7 @@ import { mintCa, mintLeaf, mintTlSigner, assertTlsoProfile } from '../../package
 import { inMemorySigner } from '../../packages/signer/src/index.mjs';
 import { buildTrustedListXml, signTrustedListXml, assertAnnexB } from '../../packages/tl-xml/src/index.mjs';
 import { AV_TL_PROFILE, assertAvProfile } from '../../packages/tl-xml/src/av-profile.mjs';
+import { buildLote, signLoteCompact, verifyLoteCompact, assertLote, LIST_PROFILES } from '../../packages/lote/src/index.mjs';
 
 const crypto = new Crypto();
 // @peculiar/x509 mantiene su motor en un registro global: la capa impura (este
@@ -89,6 +90,59 @@ const cmds = {
     });
     await writeJson(statePath, state);
     console.log(`añadido ${displayName} a ${stateId} (${state.providers.length} en total)`);
+  },
+
+  // trustlab add-entity <estado> <nombre-clave-emisión> "<nombre visible>" [nombre-clave-revocación]
+  //   Alta de una entidad en una lista LoTE.
+  async 'add-entity'([stateId, issuanceKey, displayName, revocationKey]) {
+    const statePath = join(ROOT, `state/${stateId}.json`);
+    const state = await readJson(statePath);
+    const issuance = await readJson(join(ROOT, `out/keys/${issuanceKey}.json`));
+    const revocation = revocationKey
+      ? await readJson(join(ROOT, `out/keys/${revocationKey}.json`))
+      : null;
+    state.providers.push({
+      name: displayName,
+      issuanceCertPem: issuance.crt.at(-1),      // el ancla: la raíz, no la hoja
+      ...(revocation ? { revocationCertPem: revocation.crt.at(-1) } : {}),
+    });
+    await writeJson(statePath, state);
+    console.log(`añadido ${displayName} a ${stateId} (${state.providers.length} en total)`);
+  },
+
+  // trustlab build-lote <estado> <nombre-firmante>
+  async 'build-lote'([stateId, signerName]) {
+    const statePath = join(ROOT, `state/${stateId}.json`);
+    const state = await readJson(statePath);
+    const stored = await readJson(join(ROOT, `out/keys/${signerName}.json`));
+    const key = await crypto.subtle.importKey('jwk', stored.key,
+      { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']);
+
+    state.sequenceNumber += 1;
+    const lote = buildLote(state);
+
+    const problems = assertLote(lote, state);
+    if (problems.length) {
+      console.error(`la lista no cumple TS 119 602 / el perfil ${state.loteType}:`);
+      for (const p of problems) console.error('  · ' + p);
+      process.exit(1);
+    }
+
+    const signer = inMemorySigner(key, stored.crt, crypto);
+    const jws = await signLoteCompact(lote, signer, `${signerName}-${state.sequenceNumber}`);
+
+    await mkdir(join(ROOT, 'out/lists'), { recursive: true });
+    const outPath = join(ROOT, `out/lists/${stateId}.json`);
+    await writeFile(outPath, jws);
+    await writeJson(statePath, state);
+
+    const check = await verifyLoteCompact(jws, stored.crt[0]);
+    const profile = LIST_PROFILES[state.loteType];
+    console.log(`lista ${stateId} #${state.sequenceNumber} → ${outPath}`);
+    console.log(`  perfil ${state.loteType} · tipos de servicio ${profile.svc}/{Issuance,Revocation}`);
+    console.log(`  JWS verificado · nextUpdate ${check.nextUpdate} · ${check.entities} entidad(es)`);
+    if (profile.nonNormative) console.log(`  ⚠ ${profile.nonNormative}`);
+    console.log(`  publicar en: ${state.url}`);
   },
 
   // trustlab build-list <estado> <nombre-firmante>

@@ -1,0 +1,25 @@
+{
+  "id": "wrprc-lab",
+  "kind": "lote-json",
+  "loteType": "EUWRPRCProvidersList",
+  "url": "https://trust-lab.espuni.com/lists/wrprc-lab.json",
+  "lang": "en",
+  "schemeOperatorName": "espuni Trust Lab",
+  "schemeName": "Trust Lab list of providers of wallet-relying party registration certificates (TEST)",
+  "schemeInformationUri": "https://trust-lab.espuni.com/about",
+  "territory": "EU",
+  "address": {
+    "street": "Calle de Prueba 1",
+    "locality": "Madrid",
+    "postalCode": "28001",
+    "country": "ES"
+  },
+  "sequenceNumber": 1,
+  "validityDays": 30,
+  "providers": [
+    {
+      "name": "Lab Registration Certificate Provider",
+      "issuanceCertPem": "-----BEGIN CERTIFICATE-----\nMIIBxjCCAW2gAwIBAgIIOaogVvQS8JUwCgYIKoZIzj0EAwIwRjELMAkGA1UEBhMC\nRVMxGDAWBgNVBAoTD0xhYiBSQyBQcm92aWRlcjEdMBsGA1UEAxMUTGFiIFdSUFJD\nIElzc3VpbmcgQ0EwHhcNMjYwOTA2MTMxODE3WhcNMzYwOTA0MTMxODE3WjBGMQsw\nCQYDVQQGEwJFUzEYMBYGA1UEChMPTGFiIFJDIFByb3ZpZGVyMR0wGwYDVQQDExRM\nYWIgV1JQUkMgSXNzdWluZyBDQTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABBCQ\n8R7Rcq/v/cUsuv1ZPT780+PysHgD9Yvpltpy1p+9jLmLdy8JcXXGlCM6mYySuWVD\nL2+7wsw9XTXkqp2HeuKjRTBDMBIGA1UdEwEB/wQIMAYBAf8CAQAwDgYDVR0PAQH/\nBAQDAgEGMB0GA1UdDgQWBBRsM6qqRQfLskgwts57bRTZRu7toDAKBggqhkjOPQQD\nAgNHADBEAiApu3LOp0ImsYhuHETe/tTGhmM4j3OszDn94kChcx06ogIgckNEN/43\n6KEDqxd4ewppNp7XDtMjoHu9DQ60KyAUVJk=\n-----END CERTIFICATE-----"
+    }
+  ]
+}

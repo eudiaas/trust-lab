@@ -2,13 +2,20 @@
   "name": "trust-lab",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*", "apps/*"],
-  "scripts": { "trustlab": "node apps/cli/index.mjs" },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "trustlab": "node apps/cli/index.mjs"
+  },
   "dependencies": {
+    "@owf/eudi-lote": "^0.3.2",
     "@owf/eudi-tl": "0.4.0-alpha-20260901082001",
     "@peculiar/webcrypto": "^1.5.0",
     "@peculiar/x509": "^2.0.0",
     "@xmldom/xmldom": "^0.9.12",
+    "jose": "^6.2.12",
     "reflect-metadata": "^0.2.2",
     "xadesjs": "^2.6.8",
     "xml-core": "^1.0.1"

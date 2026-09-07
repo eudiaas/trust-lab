@@ -1,0 +1,25 @@
+{
+  "id": "wallet-lab",
+  "kind": "lote-json",
+  "loteType": "EUWalletProvidersList",
+  "url": "https://trust-lab.espuni.com/lists/wallet-lab.json",
+  "lang": "en",
+  "schemeOperatorName": "espuni Trust Lab",
+  "schemeName": "Trust Lab list of wallet providers (TEST)",
+  "schemeInformationUri": "https://trust-lab.espuni.com/about",
+  "territory": "EU",
+  "address": {
+    "street": "Calle de Prueba 1",
+    "locality": "Madrid",
+    "postalCode": "28001",
+    "country": "ES"
+  },
+  "sequenceNumber": 1,
+  "validityDays": 30,
+  "providers": [
+    {
+      "name": "Lab Wallet Provider",
+      "issuanceCertPem": "-----BEGIN CERTIFICATE-----\nMIIB1DCCAXqgAwIBAgIJAIWwrBC4pyEwMAoGCCqGSM49BAMCMEwxCzAJBgNVBAYT\nAkVTMRwwGgYDVQQKExNMYWIgV2FsbGV0IFByb3ZpZGVyMR8wHQYDVQQDExZMYWIg\nV2FsbGV0IFByb3ZpZGVyIENBMB4XDTI2MDkwNjEzMTgxOVoXDTM2MDkwNDEzMTgx\nOVowTDELMAkGA1UEBhMCRVMxHDAaBgNVBAoTE0xhYiBXYWxsZXQgUHJvdmlkZXIx\nHzAdBgNVBAMTFkxhYiBXYWxsZXQgUHJvdmlkZXIgQ0EwWTATBgcqhkjOPQIBBggq\nhkjOPQMBBwNCAARJMZol0n42Oq/LsJQQS08L8TIJBN1M1DelOGUvJMDEFN3SWi7k\ndsGrEmjh0oFxM+U00RDuwNkYen23grperCmDo0UwQzASBgNVHRMBAf8ECDAGAQH/\nAgEAMA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUkQzVo3YAyaTKcQaxuirbmw9v\nlbYwCgYIKoZIzj0EAwIDSAAwRQIgJU88IrZiqhXfG+8K1Nj+RUOEAgU0ke71YXwL\nqJArdJ4CIQC4jKIHvawcDZLoRkGzCd1XcH2BHZGjlvkjCOXIuGFV0Q==\n-----END CERTIFICATE-----"
+    }
+  ]
+}

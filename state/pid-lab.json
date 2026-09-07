@@ -1,0 +1,25 @@
+{
+  "id": "pid-lab",
+  "kind": "lote-json",
+  "loteType": "EUPIDProvidersList",
+  "url": "https://trust-lab.espuni.com/lists/pid-lab.json",
+  "lang": "en",
+  "schemeOperatorName": "espuni Trust Lab",
+  "schemeName": "Trust Lab list of PID providers (TEST)",
+  "schemeInformationUri": "https://trust-lab.espuni.com/about",
+  "territory": "EU",
+  "address": {
+    "street": "Calle de Prueba 1",
+    "locality": "Madrid",
+    "postalCode": "28001",
+    "country": "ES"
+  },
+  "sequenceNumber": 1,
+  "validityDays": 30,
+  "providers": [
+    {
+      "name": "Lab PID Provider",
+      "issuanceCertPem": "-----BEGIN CERTIFICATE-----\nMIIBxTCCAWugAwIBAgIIf4o3kxTz4cgwCgYIKoZIzj0EAwIwRTELMAkGA1UEBhMC\nRVMxGTAXBgNVBAoTEExhYiBQSUQgUHJvdmlkZXIxGzAZBgNVBAMTEkxhYiBQSUQg\nSXNzdWluZyBDQTAeFw0yNjA5MDYxMzE4MThaFw0zNjA5MDQxMzE4MThaMEUxCzAJ\nBgNVBAYTAkVTMRkwFwYDVQQKExBMYWIgUElEIFByb3ZpZGVyMRswGQYDVQQDExJM\nYWIgUElEIElzc3VpbmcgQ0EwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAASVTuzm\nnZVmSJGAi/vYrbEy4V89kSntAi98GJB3nfYOomMGwhCaaAtOhH8sLquEvqGqBECi\njBNUs1Icd5CUHZjqo0UwQzASBgNVHRMBAf8ECDAGAQH/AgEAMA4GA1UdDwEB/wQE\nAwIBBjAdBgNVHQ4EFgQUv4CRJ4rGGavhwd/nRy0zTccioYcwCgYIKoZIzj0EAwID\nSAAwRQIgFN8YUS/Zd4u4Sw2/r364pL6bHv9DMYkuUY5niNf2ou4CIQC/rWuma19Q\nXxPr7m9NuQ5gi6VqIXJBtMaFrKo5jfGOkw==\n-----END CERTIFICATE-----"
+    }
+  ]
+}

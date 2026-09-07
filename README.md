@@ -11,6 +11,20 @@ node apps/cli/index.mjs add-provider av-lab av-ds "Lab AV Attestation Provider"
 node apps/cli/index.mjs build-list av-lab tl-signer
 ```
 
+Y una lista LoTE (JSON en un JWS) — aquí, la de proveedores de certificados de
+acceso, que es la que ninguna herramienta existente sabía emitir:
+
+```bash
+node apps/cli/index.mjs mint-ca     wrpac-ca-1 "C=ES, O=Lab Access CA, CN=Lab WRPAC Issuing CA"
+node apps/cli/index.mjs add-entity  wrpac-lab wrpac-ca-1 "Lab Access Certificate Provider"
+node apps/cli/index.mjs build-lote  wrpac-lab tl-signer
+```
+
+```
+perfil EUWRPACProvidersList · tipos de servicio .../SvcType/WRPAC/{Issuance,Revocation}
+JWS verificado · nextUpdate 2026-10-07T13:18:07Z · 1 entidad(es)
+```
+
 La última orden emite `out/lists/av-lab.xml` **y la verifica con `@owf/eudi-tl`**,
 que es la misma librería que usan EUDIPLO en el camino clásico y espuni en el
 camino ZK. Si pasa aquí, la aceptan los dos.
@@ -38,10 +52,24 @@ camino ZK. Si pasa aquí, la aceptan los dos.
 | Trusted List XML ETSI TS 119 612 v2.3.1 + firma XAdES | ✅ `packages/tl-xml` — Annex B + verificada con `@owf/eudi-tl` |
 | Certificado del TLSO conforme a la cláusula 5.7.1 | ✅ `mintTlSigner` + `assertTlsoProfile` |
 | Perfil **AV Trusted List** de la Comisión (tablas I.1–I.3) | ✅ `packages/tl-xml/src/av-profile.mjs` |
-| Listas LoTE (PID providers, wallet providers, Access CAs) | ⬜ sobre `@owf/eudi-lote` |
+| Listas LoTE: PID · Wallet · **WRPAC (Access CAs)** · **WRPRC** · PubEAA | ✅ `packages/lote` — TS 119 602 v1.1.1 |
 | Registration certificates (WRPRC) | ⬜ sobre `@owf/eudi-wrprc` (v1.2.1) |
 | Status lists (revocación) | ⬜ sobre `@owf/token-status-list` |
 | Firma de CSR | ⬜ solo si hace falta dar certs a terceros sin exportar claves |
+
+## Los dos formatos, y por qué el XML es el caro
+
+| | AV Trusted List | El resto (PID, Wallet, WRPAC, WRPRC) |
+|---|---|---|
+| Norma | ETSI TS 119 612 v2.4.1 | ETSI TS 119 602 v1.1.1 |
+| Formato | XML `TrustServiceStatusList` | JSON LoTE |
+| Firma | XAdES enveloped (Annex B) | JWS compacto |
+| Quién construye | **nosotros** (`packages/tl-xml`) | `@owf/eudi-lote` |
+| Quién verifica | `@owf/eudi-tl` | `jose` + la propia librería |
+
+Sólo el XML hay que construirlo a mano: ninguna librería lo firma. El LoTE lo
+cubre `@owf/eudi-lote` de punta a punta, así que ese paquete es sobre todo
+vocabulario de la norma y comprobaciones.
 
 ## La norma, convertida en test
 
@@ -63,6 +91,13 @@ Dos comprobaciones corren en cada `build-list` y **abortan la emisión** si fall
   rules, territorio "EU" y el aviso legal), el puntero a sí misma, el
   `TSPInformationURI` con el código del EM de cada PAAP, y que el estado del
   servicio sea sólo `recognized` o `deprecated`.
+
+- `assertLote(lote, state)` — validez estructural según `@owf/eudi-lote`, más
+  la coherencia entre el tipo de lista y los tipos de servicio de sus entidades.
+  Y cada `build-lote` **se verifica a sí mismo**: comprueba la firma del JWS
+  contra el certificado del firmante antes de dar la emisión por buena
+  (manipular el payload o cambiar de firmante la rechaza con
+  `ERR_JWS_SIGNATURE_VERIFICATION_FAILED`).
 
 No son decorativas: firmar la lista con una CA normal, o cambiar un URI del
 perfil AV, aborta la emisión con el detalle en pantalla.

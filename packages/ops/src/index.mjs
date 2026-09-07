@@ -199,9 +199,70 @@ export async function setStatus(store, { id, idx, status, note }) {
   return { id, idx, status, pendingPublish: true };
 }
 
+/**
+ * Crea una status list atada a quien emite los certificados que cubre.
+ *
+ * `issuerKey` no es un dato administrativo: es la clave que tendra que firmarla.
+ * Quien emite un certificado es quien puede revocarlo, asi que la lista de
+ * revocacion la firma el emisor de los WRPRC — no el operador de la lista de
+ * confianza, que no tiene nada que ver con esos certificados.
+ */
+export async function createStatusList(store, { id, issuerKey, url, size = 1024, expiresInDays = 30 }) {
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(id ?? '')) {
+    throw new OpError('el identificador solo admite minusculas, digitos y guiones', [`recibido: "${id ?? ''}"`]);
+  }
+  if (await store.docs.get('*', id)) throw new OpError(`ya existe un documento con el id "${id}"`);
+  const stored = await loadKey(store, issuerKey);
+  if (!stored.crt?.length) throw new OpError(`la clave "${issuerKey}" no tiene certificado`);
+
+  const doc = {
+    kind: 'token-status-list',
+    issuerKey,
+    issuer: organizationNameOf(stored.crt[0]) ?? stored.subject ?? issuerKey,
+    url: url?.trim() || null,
+    bits: 1,
+    size,
+    expiresInDays,
+    sequenceNumber: 0,
+    entries: {},
+  };
+  if (!doc.url) throw new OpError('falta la URL por la que se publicara la lista');
+  await store.docs.put('token-status-list', id, doc);
+  return { id, issuerKey, issuer: doc.issuer, url: doc.url, size };
+}
+
+/** Ata una status list existente a su emisor. */
+export async function setStatusIssuer(store, { id, issuerKey }) {
+  const state = await loadDoc(store, id);
+  if (state.kind !== 'token-status-list') throw new OpError(`"${id}" no es una status list`);
+  const stored = await loadKey(store, issuerKey);
+  if (!stored.crt?.length) throw new OpError(`la clave "${issuerKey}" no tiene certificado`);
+  state.issuerKey = issuerKey;
+  state.issuer = organizationNameOf(stored.crt[0]) ?? stored.subject ?? issuerKey;
+  await store.docs.put(state.kind, id, state);
+  return { id, issuerKey, issuer: state.issuer, pendientePublicar: true };
+}
+
 export async function buildStatusList(store, crypto, { id, signerName }) {
   const state = await loadDoc(store, id);
-  const { signer } = await importSigner(store, crypto, signerName);
+  // La firma la impone el documento, no quien pulsa el boton. Antes la consola
+  // ofrecia los firmantes de listas (TLSO) — el operador del esquema de
+  // confianza, que no emitio ninguno de estos certificados y por tanto no puede
+  // revocarlos.
+  if (state.issuerKey && signerName && signerName !== state.issuerKey) {
+    throw new OpError(
+      `"${id}" la firma su emisor, ${state.issuerKey}, no ${signerName}`,
+      ['quien emite un certificado es quien puede revocarlo'],
+    );
+  }
+  const firmante = state.issuerKey ?? signerName;
+  if (!firmante) {
+    throw new OpError(`"${id}" no tiene emisor asignado`, [
+      'edita el documento y ponle issuerKey, o crea la lista desde /status',
+    ]);
+  }
+  const { signer } = await importSigner(store, crypto, firmante);
+  signerName = firmante;
   state.sequenceNumber += 1;
   const jwt = await signStatusListCompact(state, signer);
   const artifact = await store.artifacts.put({
@@ -211,11 +272,13 @@ export async function buildStatusList(store, crypto, { id, signerName }) {
   });
   await store.docs.put(state.kind, id, state);
   const revoked = Object.values(state.entries).filter((e) => e.status !== 'valid').length;
-  return { id, sequence: state.sequenceNumber, artifact, size: state.size, revoked, url: state.url };
+  return { id, sequence: state.sequenceNumber, artifact, size: state.size, revoked,
+    url: state.url, signer: firmante, issuer: state.issuer ?? null };
 }
 
 export async function checkStatus(store, { id, idx, signerName }) {
-  const stored = await loadKey(store, signerName);
+  const state = await loadDoc(store, id).catch(() => null);
+  const stored = await loadKey(store, signerName ?? state?.issuerKey);
   const artifact = await store.artifacts.latest('status', id);
   if (!artifact) throw new OpError(`no hay ninguna status list emitida para "${id}"`);
   return readStatus(artifact.body, stored.crt[0], Number(idx));
@@ -290,6 +353,17 @@ export async function issueWrprc(store, crypto, { registryId, serviceId, useId, 
   const avisos = estado && estado !== 'valid'
     ? [`la posicion ${idx} de ${sl.listId} esta "${estado}": este WRPRC nace revocado`]
     : [];
+
+  // El invariante de fondo: quien emite el certificado es quien lo revoca. Si
+  // la lista a la que apunta la firma otro, el titular no puede revocarlo y
+  // quien puede no lo emitio. Se avisa en vez de bloquear porque en un
+  // laboratorio se montan a proposito escenarios asi.
+  if (sl2?.issuerKey && sl2.issuerKey !== signerName) {
+    avisos.push(
+      `este WRPRC lo firma ${signerName} pero su lista de revocacion (${sl.listId}) ` +
+        `la firma ${sl2.issuerKey}: quien lo emite no es quien puede revocarlo`,
+    );
+  }
 
   const jwt = await signWrprcCompact(payload, signer, signerName);
   // El id lleva el registro delante: TS5 no exige que `serviceIdentifier` sea

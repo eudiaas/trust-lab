@@ -42,6 +42,11 @@ export function buildStatusList(state) {
  *
  * `sub` tiene que ser la URI por la que se publica: es lo que ata la lista a su
  * localización e impide reutilizar una lista de otro sitio.
+ *
+ * `iss` identifica a **quien revoca**, que es quien emitió los certificados que
+ * la lista cubre — no el operador de ninguna lista de confianza. Va dentro de
+ * lo firmado a propósito: sin él, "quién puede revocar esto" sería una
+ * convención del despliegue en vez de una propiedad del artefacto.
  */
 export async function signStatusListCompact(state, signer, { issuedAt = new Date(), ttl } = {}) {
   const list = buildStatusList(state);
@@ -49,6 +54,7 @@ export async function signStatusListCompact(state, signer, { issuedAt = new Date
     list,
     {
       sub: state.url,
+      ...(state.issuer ? { iss: state.issuer } : {}),
       iat: Math.floor(issuedAt.getTime() / 1000),
       ...(ttl ? { ttl } : {}),
       ...(state.expiresInDays
@@ -81,6 +87,7 @@ export async function readStatus(compactJwt, signerCertPem, idx) {
   const value = list.getStatus(idx);
   return {
     sub: payload.sub,
+    iss: payload.iss ?? null,
     bits: payload.status_list.bits,
     value,
     status: Object.keys(STATUS_BY_NAME).find((k) => STATUS_BY_NAME[k] === value) ?? `desconocido(${value})`,

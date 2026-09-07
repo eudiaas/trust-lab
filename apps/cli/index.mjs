@@ -165,10 +165,19 @@ const cmds = {
     console.log('  pendiente de reemitir la lista para que el cambio se publique');
   },
 
-  // trustlab status-build <estado> <firmante>
+  // trustlab new-status-list <id> <clave-emisora> <url> [tamano]
+  async 'new-status-list'([id, issuerKey, url, size]) {
+    const r = await ops.createStatusList(store, { id, issuerKey, url, size: size ? Number(size) : undefined });
+    console.log(`status list ${r.id} · emisor ${r.issuerKey} (${r.issuer})`);
+    console.log(`  ${r.size} posiciones · se publicara en ${r.url}`);
+    console.log('  la firma su emisor: quien emite un certificado es quien lo revoca');
+  },
+
+  // trustlab status-build <estado> [firmante]
   async 'status-build'([stateId, signerName]) {
     const r = await ops.buildStatusList(store, crypto, { id: docId(stateId), signerName });
     console.log(`status list ${r.id} #${r.sequence} → ${where(r)}`);
+    console.log(`  firmada por ${r.signer}${r.issuer ? ` (${r.issuer})` : ''}`);
     console.log(`  ${r.size} posiciones · ${r.revoked} no valida(s)`);
     console.log(`  servir con Content-Type: application/statuslist+jwt en ${r.url}`);
   },

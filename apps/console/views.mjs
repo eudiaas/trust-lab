@@ -440,19 +440,16 @@ export function rpPage({ rp, statusLists, signers, cas, flash }) {
   });
 }
 
-export function statusPage({ lists, signers, flash }) {
-  return layout({
-    title: 'Revocacion',
-    path: '/status', flash,
-    body: `<h1>Revocacion</h1>
-    <p class="lead">Cambiar una posicion no publica nada: hay que reemitir la lista para que el cambio salga.</p>
-    ${lists
-      .map(
-        (l) => `<div class="card"><h3>${esc(l.id)} ${
-          l.published ? `<span class="pill ok">publicada #${l.published.sequence}</span>` : '<span class="pill warn">sin publicar</span>'
-        }</h3>
-      <div class="meta mono">${esc(l.url ?? '')} · ${l.size} posiciones · ${l.revoked} no valida(s)</div>
-      <table><tr><th>Posicion</th><th>Estado</th><th>Motivo</th><th></th></tr>
+/**
+ * Revocacion, agrupada por quien revoca.
+ *
+ * La pagina no ofrece elegir firmante, y eso es el cambio: la firma la impone
+ * el documento, porque quien emite un certificado es quien puede revocarlo. Un
+ * desplegable aqui invitaria a firmar la lista de un emisor con la clave de
+ * otro, que es justo lo que no debe poder hacerse.
+ */
+export function statusPage({ lists, emisores = [], flash }) {
+  const tabla = (l) => `<table><tr><th>Posicion</th><th>Estado</th><th>Motivo</th><th></th></tr>
       ${Object.entries(l.entries)
         .map(
           ([idx, e]) => `<tr><td class="mono">${esc(idx)}</td>
@@ -468,13 +465,64 @@ export function statusPage({ lists, signers, flash }) {
         <input type="text" name="idx" placeholder="posicion" size="6" required>
         <select name="status"><option>invalid</option><option>suspended</option><option>valid</option></select>
         <input type="text" name="note" placeholder="motivo" size="30">
-        <button>Anadir</button></form></td></tr></table>
-      <form class="inline" method="post" action="/status/${encodeURIComponent(l.id)}/build">
-        <select name="signer">${signers.map((s) => `<option>${esc(s)}</option>`).join('')}</select>
-        <button class="primary">Reemitir lista</button></form>
-      </div>`,
-      )
-      .join('')}`,
+        <button>Marcar</button></form></td></tr></table>`;
+
+  const card = (l) => `<div class="card">
+      <h3>${esc(l.id)} ${
+        l.published ? `<span class="pill ok">publicada #${l.published.sequence}</span>` : '<span class="pill warn">sin publicar</span>'
+      }</h3>
+      <div class="meta">Revoca <strong>${esc(l.issuer ?? 'sin emisor asignado')}</strong>${
+        l.issuerKey ? ` · firma <span class="mono">${esc(l.issuerKey)}</span>` : ''
+      }</div>
+      <div class="meta mono">${esc(l.url ?? '')} · ${l.size} posiciones · ${l.revoked} no valida(s)</div>
+      ${
+        l.issuerKey
+          ? ''
+          : `<div class="flash bad">Sin emisor asignado: no se puede emitir. Elige la clave que
+             firma los certificados que esta lista cubre.</div>
+             <form class="inline" method="post" action="/status/${encodeURIComponent(l.id)}/issuer">
+               <select name="issuerKey">${emisores
+                 .map((e) => `<option value="${esc(e.name)}">${esc(e.name)}</option>`)
+                 .join('')}</select>
+               <button class="primary">Asignar emisor</button></form>`
+      }
+      ${tabla(l)}
+      ${
+        l.issuerKey
+          ? `<form class="inline" method="post" action="/status/${encodeURIComponent(l.id)}/build" style="margin-top:.7rem">
+               <button class="primary">Reemitir firmando con ${esc(l.issuerKey)}</button></form>`
+          : ''
+      }
+    </div>`;
+
+  return layout({
+    title: 'Revocacion',
+    path: '/status', flash,
+    body: `<h1>Revocacion</h1>
+    <p class="lead">Una lista por emisor. La firma <strong>quien emitio los certificados que
+    cubre</strong> —no el operador del esquema de confianza, que no emitio ninguno— y por eso
+    aqui no se elige firmante: lo impone el documento. Cambiar una posicion no publica nada;
+    hay que reemitir.</p>
+    ${lists.map(card).join('') || '<p class="meta">No hay ninguna lista todavia.</p>'}
+
+    <h2>Nueva lista</h2>
+    <div class="card">
+      <div class="meta">Cada emisor de certificados de registro lleva la suya. El
+      <span class="mono">iss</span> de la lista firmada sale del certificado de esta clave.</div>
+      <form method="post" action="/status">
+        <div class="row">
+          <input type="text" name="id" placeholder="identificador" pattern="[a-z0-9][a-z0-9-]*" required>
+          <select name="issuerKey">${emisores
+            .map((e) => `<option value="${esc(e.name)}">${esc(e.name)}${e.subject ? ` — ${esc(e.subject)}` : ''}</option>`)
+            .join('')}</select>
+        </div>
+        <div class="row" style="margin-top:.5rem">
+          <input type="text" name="url" placeholder="https://…/status/…" size="42" required>
+          <input type="text" name="size" placeholder="1024" size="6">
+          <button class="primary">Crear</button>
+        </div>
+      </form>
+    </div>`,
   });
 }
 

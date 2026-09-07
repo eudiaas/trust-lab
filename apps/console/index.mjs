@@ -183,11 +183,19 @@ const server = createServer(async (req, res) => {
         lists.push({
           id: d.id, url: d.url, size: d.size, entries: d.entries ?? {},
           revoked: Object.values(d.entries ?? {}).filter((e) => e.status !== 'valid').length,
+          issuerKey: d.issuerKey ?? null, issuer: d.issuer ?? null,
           published: await store.artifacts.latest('status', d.id),
         });
       }
-      const signers = (await tlsoCandidates(store, null)).filter((s) => !s.errors.length).map((s) => s.name);
-      return send(res, 200, views.statusPage({ lists, signers, flash }));
+      // Los candidatos a EMISOR de una status list no son los firmantes de
+      // listas: son las claves que firman certificados de registro. Ofrecer un
+      // TLSO aqui era la version en interfaz del mismo error de modelo.
+      // Fuera el firmante de listas: su certificado declara con un EKU que su
+      // trabajo es firmar listas de confianza, no emitir ni revocar
+      // certificados de registro. Ofrecerlo aqui reintroduce el mismo error.
+      const emisores = (await signingCandidates(store))
+        .filter((s) => !s.expired && s.role !== 'firmante de listas');
+      return send(res, 200, views.statusPage({ lists, emisores, flash }));
     }
 
     // ---- descarga ----
@@ -369,6 +377,21 @@ const server = createServer(async (req, res) => {
           (r.warnings?.length ? `\n⚠ ${r.warnings.join('\n⚠ ')}` : ''));
     }
 
+    if (parts[0] === 'status' && parts[2] === 'issuer') {
+      return run(res, '/status', () =>
+        ops.setStatusIssuer(store, { id: parts[1], issuerKey: form.get('issuerKey') }),
+        (r) => `${r.id} la revoca ahora ${r.issuerKey} (${r.issuer}). Reemitela para que salga.`);
+    }
+
+    if (path === '/status' && parts.length === 1) {
+      return run(res, '/status', () =>
+        ops.createStatusList(store, {
+          id: form.get('id')?.trim(), issuerKey: form.get('issuerKey'),
+          url: form.get('url'), size: form.get('size') ? Number(form.get('size')) : undefined,
+        }),
+        (r) => `Status list ${r.id} creada, la firma ${r.issuerKey}. Marca posiciones y emitela.`);
+    }
+
     if (parts[0] === 'status' && parts[2] === 'set') {
       return run(res, '/status', () =>
         ops.setStatus(store, {
@@ -379,8 +402,8 @@ const server = createServer(async (req, res) => {
 
     if (parts[0] === 'status' && parts[2] === 'build') {
       return run(res, '/status', () =>
-        ops.buildStatusList(store, crypto, { id: parts[1], signerName: form.get('signer') }),
-        (r) => `Status list ${r.id} reemitida (#${r.sequence}) · ${r.revoked} no valida(s)`);
+        ops.buildStatusList(store, crypto, { id: parts[1] }),
+        (r) => `Status list ${r.id} reemitida (#${r.sequence}) por ${r.signer} · ${r.revoked} no valida(s)`);
     }
 
     if (path === '/rps' && parts.length === 1) {

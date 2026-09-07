@@ -1,7 +1,10 @@
 {
-  "id": "status-wrprc",
   "kind": "token-status-list",
+  "id": "status-wrprc",
   "url": "https://trust-lab.espuni.com/status/wrprc",
+  "issuerKey": null,
+  "_issuerKey": "La clave que firma los certificados de registro que esta lista cubre. Quien emite un certificado es quien puede revocarlo, asi que la lista la firma su emisor y no el operador del esquema de confianza. Se asigna desde /status; sin ella la lista no se puede emitir.",
+  "issuer": null,
   "bits": 1,
   "size": 1024,
   "expiresInDays": 30,

@@ -116,20 +116,24 @@ ni perfil que sustituya a eso.
 | las Key Attestation | firmante de KA | CA del wallet provider, *o autofirmado* | `wallet-lab` |
 | — (los emite) | access certificate de la RP | **CA de acceso** (obligatoria) | `wrpac-lab` |
 | los registration certificates | firmante de WRPRC | CA de WRPRC, *o autofirmado* | `wrprc-lab` |
-| — (se revocan) | los WRPRC | — | `status-wrprc` |
+| la revocación de los WRPRC | **el mismo firmante de WRPRC** | — | su propia status list |
 
 Dónde hace falta CA y dónde basta un autofirmado sale de dos reglas
 independientes (§5.2): hace falta cuando algo tiene que **firmar un X.509**
 (`wrpac-lab`) o cuando el **formato de la credencial exige jerarquía** (mdoc:
 `av-lab`, `pid-lab`).
 
-**La sexta no es una lista de confianza.** Las cinco primeras dicen *en quién se
-confía*; `status-wrprc` dice de qué se ha **dejado** de confiar. Existe porque
-cada registration certificate lleva dentro una posición suya
-(`status.status_list = { idx, uri }`, TS 119 475), así que sin ella «certificado
-de registro revocado» sería una frase y no algo comprobable. Se emite y publica
-igual que las demás —de ahí que comparta pantallas— pero su contenido no son
-certificados sino posiciones, y se edita en **Revocación** (§5.8).
+**Las status lists no son listas de confianza.** Las cinco dicen *en quién se
+confía*; una status list dice de qué se ha **dejado** de confiar. Existen porque
+cada registration certificate lleva dentro una posición
+(`status.status_list = { idx, uri }`, TS 119 475), así que sin ellas
+«certificado de registro revocado» sería una frase y no algo comprobable.
+
+**Y las firma su emisor, no el operador del esquema.** Quien emite un
+certificado es quien puede revocarlo: el firmante de los WRPRC firma también la
+lista donde se revocan, y el `iss` de la lista firmada lo dice. Por eso hay
+**una lista por emisor** y no una global — dos proveedores de certificados de
+registro no comparten revocación, igual que no comparten clave.
 
 El **firmante de listas es la otra excepción**: no está en ninguna lista, porque
 es quien las firma. Su certificado se pinea en el otro extremo, y eso es lo que
@@ -147,7 +151,7 @@ CA de acceso ──────────────────────�
    └── access certificate (uno por servicio de la RP)
 CA de WRPRC ──→ firmante WRPRC ────→ wrprc-lab
    └── registration certificate (uno por finalidad)
-status list ───────────────────────→ revoca los WRPRC
+firmante WRPRC ──→ su status list ──→ revoca los WRPRC que él emitió
 ```
 
 El **dashboard** de la consola (`/`) es ese grafo calculado sobre el almacén:
@@ -502,12 +506,26 @@ y ese es el fallo que este laboratorio existe para provocar y detectar.
 
 ### 5.8 Revocar
 
+Cada emisor de certificados de registro tiene **su propia lista**, y la firma él:
+
 ```bash
-$T status-check status-wrprc 0 tl-signer   # → valid
-$T status-set   status-wrprc 0 invalid "finalidad retirada"
-$T status-build status-wrprc tl-signer
-$T status-check status-wrprc 0 tl-signer   # → invalid
+# una lista por emisor, atada a la clave que firma sus WRPRC
+$T new-status-list status-a firmante-a https://trust-lab.espuni.com/status/a
+
+$T status-check status-a 0 firmante-a   # → valid
+$T status-set   status-a 0 invalid "finalidad retirada"
+$T status-build status-a                # la firma su emisor; no se elige
+$T status-check status-a 0 firmante-a   # → invalid
 ```
+
+`status-build` **no acepta firmante**: lo impone el documento. Pasarle otro se
+rechaza —«la firma su emisor, firmante-a, no tl-signer»— porque el operador del
+esquema de confianza no emitió ninguno de esos certificados y no puede
+revocarlos. En la consola no hay desplegable de firmante por la misma razón, y
+los firmantes de listas ni siquiera se ofrecen como emisores.
+
+Al emitir un WRPRC se avisa si la lista a la que apunta la firma otro: quien lo
+emite no sería quien puede revocarlo.
 
 > Consola: **Revocación**.
 
@@ -736,9 +754,10 @@ delete-rp <id> [force]                              borra registro + sus certifi
 delete-wrprc <id>                                   borra un WRPRC emitido
 unpublish <estado>                                  retira lo publicado, deja el documento
 
+new-status-list <id> <clave-emisora> <url> [tamaño]   una lista por emisor
 status-set <estado> <posición> <valid|invalid|suspended> ["motivo"]
-status-build <estado> <firmante>
-status-check <estado> <posición> <firmante>
+status-build <estado>                                la firma su emisor
+status-check <estado> <posición> [firmante]
 
 export-key <nombre> [chain|bundle|key|jwk] [destino]
 export <tipo> <id> [destino]                        tipo: wrprc|lists|lote|status

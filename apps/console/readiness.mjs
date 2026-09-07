@@ -58,6 +58,8 @@ export async function signingCandidates(store) {
     }
     if (d.role === 'ilegible' || d.ca) continue;
     out.push({ name, subject: doc.subject, role: d.role, expired: d.expired });
+    // `role` distingue el firmante de listas del resto, que es lo que permite
+    // excluirlo donde no pinta nada (emisor de una status list, por ejemplo).
   }
   return out;
 }

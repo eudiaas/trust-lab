@@ -37,6 +37,7 @@ camino ZK. Si pasa aquí, la aceptan los dos.
 | CA + hojas (P-256, SKI/AKI/CRL DP, DN completo con país) | ✅ `packages/ca` |
 | Trusted List XML ETSI TS 119 612 v2.3.1 + firma XAdES | ✅ `packages/tl-xml` — Annex B + verificada con `@owf/eudi-tl` |
 | Certificado del TLSO conforme a la cláusula 5.7.1 | ✅ `mintTlSigner` + `assertTlsoProfile` |
+| Perfil **AV Trusted List** de la Comisión (tablas I.1–I.3) | ✅ `packages/tl-xml/src/av-profile.mjs` |
 | Listas LoTE (PID providers, wallet providers, Access CAs) | ⬜ sobre `@owf/eudi-lote` |
 | Registration certificates (WRPRC) | ⬜ sobre `@owf/eudi-wrprc` (v1.2.1) |
 | Status lists (revocación) | ⬜ sobre `@owf/token-status-list` |
@@ -56,8 +57,28 @@ Dos comprobaciones corren en cada `build-list` y **abortan la emisión** si fall
   KeyUsage limitado a digitalSignature/nonRepudiation y EKU
   `id-tsl-kp-tslSigning` (0.4.0.2231.3.0).
 
-No son decorativas: firmar la lista con una CA normal las dispara y la emisión
-se para.
+- `assertAvProfile(state)` — las tablas I.1–I.3 de las *AV Trusted List
+  Specifications* de la Comisión: los seis valores que fija por texto exacto
+  (scheme name, scheme information URI, status determination approach, scheme
+  rules, territorio "EU" y el aviso legal), el puntero a sí misma, el
+  `TSPInformationURI` con el código del EM de cada PAAP, y que el estado del
+  servicio sea sólo `recognized` o `deprecated`.
+
+No son decorativas: firmar la lista con una CA normal, o cambiar un URI del
+perfil AV, aborta la emisión con el detalle en pantalla.
+
+## Por qué la lista de laboratorio copia el perfil AV al pie de la letra
+
+Podría llevar un nombre de esquema propio que gritara "esto es una prueba". No
+lo lleva, y es deliberado: el objetivo es que una wallet trate esta lista
+**exactamente igual** que la real, y la única diferencia sea **quién la firma**
+y **quién está dentro**. Un nombre distinto o un URI propio darían a una wallet
+estricta un motivo para rechazarla que no es el que estamos probando. La
+honestidad no vive en el contenido de la lista, vive en que nadie confía en ella
+salvo quien pinea nuestro firmante a mano.
+
+Si prefieres lo contrario, `allowDivergence: true` en el estado degrada las
+comprobaciones del perfil AV a avisos.
 
 ## Aviso
 

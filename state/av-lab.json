@@ -5,8 +5,8 @@
   "url": "https://trust-lab.espuni.com/lists/av-lab.xml",
   "lang": "en",
   "schemeOperatorName": "espuni Trust Lab",
-  "schemeName": "ES: Trust Lab AV Trusted List (TEST — NOT A REAL SCHEME)",
-  "territory": "ES",
+  "schemeName": "EU:List containing the information notified by EU Member States on authorised Proof of Age Attestation Providers.",
+  "territory": "EU",
   "address": {
     "street": "Calle de Prueba 1",
     "locality": "Madrid",
@@ -18,22 +18,29 @@
     ]
   },
   "schemeInformationUri": [
-    "https://trust-lab.espuni.com/about"
+    "http://trust.tech.ec.europa.eu/lists/age-verification/scheme-information"
   ],
   "schemeTypeCommunityRules": [
-    "https://trust-lab.espuni.com/rules"
+    "http://trust.tech.ec.europa.eu/lists/age-verification/scheme-rules"
   ],
-  "statusDeterminationApproach": "http://trust.tech.ec.europa.eu/lists/age-verification/StatusDetn/EU",
+  "statusDeterminationApproach": "http://trust.tech.ec.europa.eu/lists/age-verification/status-determination/compliance-declaration",
   "legalNotice": [
-    "Lista de pruebas emitida por espuni Trust Lab. No tiene valor legal y no acredita a ningún proveedor. Solo para probar el marco de confianza en entornos de test."
+    "The present list contains information notified by Member States on the Proof of Age Attestation Providers and the Proof of Age Services they provide for the purpose of facilitating compliance of online services with Article 28 of the Digital Services Act. The European Commission maintains this website as an interoperability tool designed to facilitate the practical use of the age-verification trusted list. The European Commission seeks to keep the information accurate and timely correct errors that are brought to its attention. Without prejudice to provisions laid down in applicable national or Union law, the European Commission, however, does not accept liability or responsibility for any problems incurred as a result of using the age-verification trusted list or any information contained therein. The responsibility and liability with regard to the provision of listed services lie exclusively with the Proof of Age Attestation Providers providing them."
   ],
   "historicalInformationPeriodDays": 65535,
-  "sequenceNumber": 4,
+  "sequenceNumber": 6,
   "validityDays": 30,
+  "pointerToSelf": {
+    "signerCertPem": "-----BEGIN CERTIFICATE-----\nMIIB4zCCAYigAwIBAgIIBoXjAdX5DeAwCgYIKoZIzj0EAwIwTTELMAkGA1UEBhMC\nRVUxGTAXBgNVBAoTEGVzcHVuaSBUcnVzdCBMYWIxIzAhBgNVBAMTGmVzcHVuaSBU\ncnVzdCBMYWIgVEwgU2lnbmVyMB4XDTI2MDkwNjEyNTQwNFoXDTI5MDkwNjEyNTQw\nNFowTTELMAkGA1UEBhMCRVUxGTAXBgNVBAoTEGVzcHVuaSBUcnVzdCBMYWIxIzAh\nBgNVBAMTGmVzcHVuaSBUcnVzdCBMYWIgVEwgU2lnbmVyMFkwEwYHKoZIzj0CAQYI\nKoZIzj0DAQcDQgAEfFR2cDyfdH9zzO+AhCV65SWLgJMQ84/mp0kLyywSNWnW+z3Z\nQUsKtd3QY0lXc1IFDiDKgQ5eIhVNCJh2QufMl6NSMFAwDAYDVR0TAQH/BAIwADAO\nBgNVHQ8BAf8EBAMCBsAwEQYDVR0lBAowCAYGBACRNwMAMB0GA1UdDgQWBBRC7/Yb\nBX0V8KH/QADQ3iEGActDLjAKBggqhkjOPQQDAgNJADBGAiEAvykU4WL+Cptk8rNK\nqCvnncsQCpKcwfAAziB5V8c2CDECIQD/Fh9mwe2SwsdPcTajEQp3Sh5HJbd5etKb\ncEotXic5lQ==\n-----END CERTIFICATE-----",
+    "mimeType": "application/vnd.etsi.tsl+xml"
+  },
   "providers": [
     {
       "name": "Lab AV Attestation Provider",
       "serviceName": "Lab AV Attestation Provider — AV attestation issuance",
+      "informationUri": [
+        "http://trust.tech.ec.europa.eu/lists/age-verification/paap/es"
+      ],
       "certPem": "-----BEGIN CERTIFICATE-----\nMIIB6TCCAY+gAwIBAgIINgHciCYPC9YwCgYIKoZIzj0EAwIwSTELMAkGA1UEBhMC\nRVMxJDAiBgNVBAoTG0xhYiBBViBBdHRlc3RhdGlvbiBQcm92aWRlcjEUMBIGA1UE\nAxMLTGFiIEFWIElBQ0EwHhcNMjYwOTA2MTIxOTQzWhcNMjcwOTA3MTIxOTQzWjBK\nMQswCQYDVQQGEwJFUzEkMCIGA1UEChMbTGFiIEFWIEF0dGVzdGF0aW9uIFByb3Zp\nZGVyMRUwEwYDVQQDEwxMYWIgQVYgRFMgMDEwWTATBgcqhkjOPQIBBggqhkjOPQMB\nBwNCAAR5EP9mcUSfnapgl7scI4RzRuGBR7a6BUtE137X3+QXdarHon57v4LGPkYf\nwNyD5ILDSTlQvj4sJk2LJjX4D3VMo2AwXjAMBgNVHRMBAf8EAjAAMA4GA1UdDwEB\n/wQEAwIHgDAdBgNVHQ4EFgQUaAqTIbYFOZccEsbcZtmWkuBrPtMwHwYDVR0jBBgw\nFoAUI+U869Qs1H98HpKJGaC0mI2fsDwwCgYIKoZIzj0EAwIDSAAwRQIhAPa5eG2D\noGpA7n4h1wjOGcutVLibRRPjK2xBqlEaf2NtAiAXb9JkkgDqeCJ35PhJJ8bQyl+M\nsz68kHgt3JkAg2VOcw==\n-----END CERTIFICATE-----"
     }
   ]

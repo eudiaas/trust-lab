@@ -85,12 +85,12 @@ export const OID_TSL_SIGNING = '0.4.0.2231.3.0';
  * El DN se deriva del estado de la lista a propósito: así la regla de
  * coincidencia C/O se cumple por construcción y no por suerte.
  */
-export async function mintTlSigner(crypto, { schemeOperatorName, territory, commonName, validityDays = 1095 }) {
+export async function mintTlSigner(crypto, { schemeOperatorName, territory, signerCountry, commonName, validityDays = 1095 }) {
   const keys = await crypto.subtle.generateKey(ALG, true, ['sign', 'verify']);
   const now = new Date();
   const cert = await x509.X509CertificateGenerator.createSelfSigned({
     serialNumber: serial(crypto),
-    name: `C=${territory}, O=${schemeOperatorName}, CN=${commonName ?? schemeOperatorName}`,
+    name: `C=${signerCountry ?? territory}, O=${schemeOperatorName}, CN=${commonName ?? schemeOperatorName}`,
     notBefore: new Date(now.getTime() - DAY),
     notAfter: new Date(now.getTime() + validityDays * DAY),
     signingAlgorithm: ALG,
@@ -108,14 +108,24 @@ export async function mintTlSigner(crypto, { schemeOperatorName, territory, comm
   return { keys, cert, pem: cert.toString('pem') };
 }
 
-/** La cláusula 5.7.1 convertida en test. Devuelve los incumplimientos. */
+/**
+ * La cláusula 5.7.1 convertida en test. Devuelve `{ errors, warnings }`.
+ *
+ * La regla del país va como **aviso, no error**, y no por comodidad: la propia
+ * Comisión no la cumple en la AV TL de producción. Esa lista declara
+ * `SchemeTerritory` = "EU" y la firma con un certificado cuyo Subject es
+ * `C=LU, O=EUROPEAN COMMISSION` — porque "EU" no es un país ISO 3166 y un
+ * certificado cualificado se emite en un Estado miembro concreto. Fallar aquí
+ * rechazaría el certificado real, que es peor que avisar.
+ */
 export function assertTlsoProfile(certPem, { schemeOperatorName, territory }) {
   const cert = new x509.X509Certificate(certPem);
   const problems = [];
+  const warnings = [];
   const dn = new x509.Name(cert.subject);
   const c = dn.getField('C')[0];
   const o = dn.getField('O')[0];
-  if (c !== territory) problems.push(`5.7.1: Subject C=${c} debe ser el Scheme Territory (${territory})`);
+  if (c !== territory) warnings.push(`5.7.1: Subject C=${c} y Scheme Territory=${territory} no coinciden (la AV TL de producción hace lo mismo: C=LU con territorio EU)`);
   if (o !== schemeOperatorName) problems.push(`5.7.1: Subject O=${o} debe coincidir con Scheme operator name (${schemeOperatorName})`);
 
   const bc = cert.getExtension('2.5.29.19');
@@ -133,5 +143,5 @@ export function assertTlsoProfile(certPem, { schemeOperatorName, territory }) {
     problems.push('5.7.1: ExtendedKeyUsage debería contener id-tsl-kp-tslSigning (0.4.0.2231.3.0)');
 
   if (!cert.getExtension('2.5.29.14')) problems.push('5.7.1: falta SubjectKeyIdentifier');
-  return problems;
+  return { errors: problems, warnings };
 }

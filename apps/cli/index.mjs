@@ -9,6 +9,7 @@ import { TrustedListProfiles, loadTrustedList, getTrustAnchors } from '@owf/eudi
 import { mintCa, mintLeaf, mintTlSigner, assertTlsoProfile } from '../../packages/ca/src/index.mjs';
 import { inMemorySigner } from '../../packages/signer/src/index.mjs';
 import { buildTrustedListXml, signTrustedListXml, assertAnnexB } from '../../packages/tl-xml/src/index.mjs';
+import { AV_TL_PROFILE, assertAvProfile } from '../../packages/tl-xml/src/av-profile.mjs';
 
 const crypto = new Crypto();
 // @peculiar/x509 mantiene su motor en un registro global: la capa impura (este
@@ -46,14 +47,16 @@ const cmds = {
     const tlso = await mintTlSigner(crypto, {
       schemeOperatorName: state.schemeOperatorName,
       territory: state.territory,
+      signerCountry: state.signerCountry,
       commonName: `${state.schemeOperatorName} TL Signer`,
     });
-    const problems = assertTlsoProfile(tlso.pem, state);
-    if (problems.length) {
+    const { errors, warnings } = assertTlsoProfile(tlso.pem, state);
+    if (errors.length) {
       console.error('el certificado no cumple 5.7.1:');
-      for (const p of problems) console.error('  · ' + p);
+      for (const p of errors) console.error('  · ' + p);
       process.exit(1);
     }
+    for (const w of warnings) console.warn('  ⚠ ' + w);
     await exportKeyChain(name, tlso);
     console.log(`TLSO ${name}: ${tlso.cert.subject}`);
     console.log('  perfil 5.7.1 (TS 119 612) · OK');
@@ -71,13 +74,17 @@ const cmds = {
     console.log(`hoja ${name}: ${leaf.cert.subject}`);
   },
 
-  // trustlab add-provider <estado> <nombre-hoja> "<nombre visible>"
-  async 'add-provider'([stateId, leafName, displayName]) {
+  // trustlab add-provider <estado> <nombre-hoja> "<nombre visible>" <CC>
+  async 'add-provider'([stateId, leafName, displayName, cc]) {
     const statePath = join(ROOT, `state/${stateId}.json`);
     const state = await readJson(statePath);
     const leaf = await readJson(join(ROOT, `out/keys/${leafName}.json`));
+    if (!/^[A-Z]{2}$/.test(cc ?? '')) throw new Error('falta el código ISO 3166-1 alpha-2 del Estado miembro del PAAP');
     state.providers.push({
-      name: displayName, serviceName: `${displayName} — AV attestation issuance`,
+      name: displayName,
+      serviceName: `${displayName} — AV attestation issuance`,
+      // Tabla I.2 del perfil AV: el URI lleva el código del EM donde está establecido.
+      informationUri: [AV_TL_PROFILE.paapInformationUriPrefix + cc.toLowerCase()],
       certPem: leaf.crt[0],
     });
     await writeJson(statePath, state);
@@ -92,12 +99,24 @@ const cmds = {
     const key = await crypto.subtle.importKey('jwk', stored.key,
       { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']);
 
-    const tlsoProblems = assertTlsoProfile(stored.crt[0], state);
-    if (tlsoProblems.length) {
+    const tlso = assertTlsoProfile(stored.crt[0], state);
+    if (tlso.errors.length) {
       console.error('el firmante no cumple el perfil TLSO de la cláusula 5.7.1:');
-      for (const p of tlsoProblems) console.error('  · ' + p);
+      for (const p of tlso.errors) console.error('  · ' + p);
       process.exit(1);
     }
+
+    // 5.3.13 / tabla I.1: la lista se apunta a sí misma, con la identidad
+    // digital de su propio firmante.
+    state.pointerToSelf = { signerCertPem: stored.crt[0], mimeType: AV_TL_PROFILE.mimeType };
+
+    const avProblems = assertAvProfile(state);
+    if (avProblems.length && !state.allowDivergence) {
+      console.error('el estado no cumple el perfil de la AV Trusted List:');
+      for (const p of avProblems) console.error('  · ' + p);
+      process.exit(1);
+    }
+    for (const w of avProblems) console.warn('  ⚠ divergencia del perfil AV: ' + w);
 
     state.sequenceNumber += 1;                       // contrato 3: estado explícito
     const profile = TrustedListProfiles[state.profile];
@@ -125,7 +144,9 @@ const cmds = {
     const tl = await loadTrustedList(signed, { trustAnchors: [anchorDer] });
     const anchors = getTrustAnchors(tl, { serviceTypes: profile.serviceTypes });
     console.log(`lista ${stateId} #${state.sequenceNumber} → ${outPath}`);
-    console.log(`  Annex B (TS 119 612) · OK`);
+    console.log(`  Annex B (TS 119 612 v2.4.1) · OK`);
+    console.log(`  perfil AV TL (CE, tablas I.1–I.3) · OK`);
+    for (const w of tlso.warnings) console.log('  ⚠ ' + w);
     console.log(`  verificada con @owf/eudi-tl · nextUpdate ${tl.nextUpdate} · ${anchors.length} ancla(s)`);
     console.log(`  publicar en: ${state.url}`);
   },

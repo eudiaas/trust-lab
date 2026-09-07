@@ -16,6 +16,7 @@ import { pemToBase64Der } from '../../signer/src/index.mjs';
 export { TrustedListProfiles } from '@owf/eudi-tl';
 
 const NS = 'http://uri.etsi.org/02231/v2#';
+const NS_ADDTYPES = 'http://uri.etsi.org/02231/v2/additionaltypes#';
 const TSL_TAG = 'http://uri.etsi.org/19612/TSLTag';
 
 const iso = (d) => new Date(d).toISOString().replace(/\.\d+Z$/, 'Z');
@@ -53,6 +54,25 @@ export function buildTrustedListXml(state, profile, now = new Date()) {
     `</PostalAddress></PostalAddresses>` +
     `<ElectronicAddress>${a.uris.map((u) => `<URI xml:lang="${lang}">${esc(u)}</URI>`).join('')}</ElectronicAddress>`;
 
+  // 5.3.13 + tabla I.1 del perfil AV: "Value: Pointer to itself". El tuple lleva
+  // la localización, la identidad digital del firmante de la lista apuntada, y
+  // los TL Qualifiers (TSLType, scheme operator name, scheme rules, territorio
+  // y mime type de la cláusula 6.2).
+  const pointer = state.pointerToSelf
+    ? `<PointersToOtherTSL><OtherTSLPointer>` +
+      `<ServiceDigitalIdentities><ServiceDigitalIdentity><DigitalId>` +
+      `<X509Certificate>${pemToBase64Der(state.pointerToSelf.signerCertPem)}</X509Certificate>` +
+      `</DigitalId></ServiceDigitalIdentity></ServiceDigitalIdentities>` +
+      `<TSLLocation>${esc(state.url)}</TSLLocation>` +
+      `<AdditionalInformation>` +
+      `<OtherInformation><TSLType>${profile.tslType}</TSLType></OtherInformation>` +
+      `<OtherInformation>${ml('SchemeOperatorName', state.schemeOperatorName)}</OtherInformation>` +
+      `<OtherInformation>${uris('SchemeTypeCommunityRules', state.schemeTypeCommunityRules)}</OtherInformation>` +
+      `<OtherInformation><ns3:SchemeTerritory xmlns:ns3="${NS_ADDTYPES}">${esc(state.territory)}</ns3:SchemeTerritory></OtherInformation>` +
+      `<OtherInformation><ns3:MimeType xmlns:ns3="${NS_ADDTYPES}">${esc(state.pointerToSelf.mimeType)}</ns3:MimeType></OtherInformation>` +
+      `</AdditionalInformation></OtherTSLPointer></PointersToOtherTSL>`
+    : '';
+
   const providers = state.providers
     .map((p) => `
    <TrustServiceProvider>
@@ -60,7 +80,7 @@ export function buildTrustedListXml(state, profile, now = new Date()) {
      ${ml('TSPName', p.name)}
      ${ml('TSPTradeName', p.tradeName ?? p.name)}
      <TSPAddress>${address(p.address ?? state.address)}</TSPAddress>
-     ${uris('TSPInformationURI', p.informationUri ?? [state.schemeInformationUri[0]])}
+     ${uris('TSPInformationURI', p.informationUri)}
     </TSPInformation>
     <TSPServices>
      <TSPService>
@@ -97,6 +117,7 @@ export function buildTrustedListXml(state, profile, now = new Date()) {
     .map((n) => `<TSLLegalNotice xml:lang="${lang}">${esc(n)}</TSLLegalNotice>`)
     .join('')}</PolicyOrLegalnotice>
   <HistoricalInformationPeriod>${state.historicalInformationPeriodDays ?? 65535}</HistoricalInformationPeriod>
+  ${pointer}
   <ListIssueDateTime>${issued}</ListIssueDateTime>
   <NextUpdate><dateTime>${next}</dateTime></NextUpdate>
  </SchemeInformation>

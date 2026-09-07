@@ -169,6 +169,39 @@ const server = createServer(async (req, res) => {
       return send(res, 200, views.statusPage({ lists, signers, flash }));
     }
 
+    // ---- descarga ----
+    // Detras del login, y con `attachment` para que el navegador no pinte una
+    // clave privada en una pestana. El publisher NO tiene ninguna de estas
+    // rutas: no puede descifrar claves y no debe servir WRPRC, que no es
+    // material publicado sino material que se entrega a su titular.
+    if (parts[0] === 'download' && req.method === 'GET') {
+      let out;
+      try {
+        if (parts[1] === 'key' && parts.length === 3) {
+          out = await ops.exportKey(store, crypto, {
+            name: decodeURIComponent(parts[2]),
+            form: url.searchParams.get('form') ?? 'chain',
+          });
+          if (out.secret) {
+            console.warn(`[export] clave privada "${parts[2]}" descargada (${out.filename})`);
+          }
+        } else if (parts.length === 3) {
+          out = await ops.exportArtifact(store, {
+            kind: parts[1], id: decodeURIComponent(parts[2]), sequence: url.searchParams.get('n'),
+          });
+        } else {
+          return send(res, 404, 'no existe');
+        }
+      } catch (err) {
+        return send(res, 404, `<pre>${err.message}</pre>`);
+      }
+      return send(res, 200, out.body, {
+        'Content-Type': out.contentType,
+        'Content-Disposition': `attachment; filename="${out.filename}"`,
+        'Cache-Control': 'no-store',
+      });
+    }
+
     if (parts[0] === 'docs' && parts.length === 2 && req.method === 'GET') {
       const doc = await store.docs.get('*', parts[1]);
       if (!doc) return send(res, 404, 'no existe');

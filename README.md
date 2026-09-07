@@ -155,6 +155,31 @@ node apps/cli/index.mjs mint-wrpac  wrpac-issuing-ca espuni-access state/espuni-
 node apps/cli/index.mjs issue-wrprc state/espuni-rp.json av-1 av-over-18 tl-signer
 ```
 
+### Sacarlos de la fábrica
+
+Los dos certificados se emiten aquí pero se **usan fuera**: el access
+certificate lo instala el RP en su propio despliegue y el WRPRC viaja dentro de
+la petición OID4VP. Así que hay puerta de salida, y está **solo en la consola**
+— la superficie autenticada. El publisher no tiene ninguna de estas rutas y no
+puede descifrar ninguna clave, que es justo para lo que se separó.
+
+```bash
+# access certificate: cadena (pública), o cadena + privada
+node apps/cli/index.mjs export-key espuni-rp-av-1-access chain  out/
+node apps/cli/index.mjs export-key espuni-rp-av-1-access bundle out/   # 0600
+node apps/cli/index.mjs export-key espuni-rp-av-1-access jwk    out/   # JWK + x5c
+
+# registration certificate: el JWS compacto, byte a byte como se emitió
+node apps/cli/index.mjs export wrprc av-1-av-over-18 out/
+```
+
+En la consola son enlaces: `/rps/<rp>` para los de una relying party, `/keys`
+para cualquier clave del almacén. Las cuatro formas están detrás de la misma
+autenticación, pero **solo `chain` no es secreta** — es el certificado y su
+cadena, que es lo que se pinea en el otro extremo. Las otras tres llevan la
+privada dentro, se marcan con 🔑, se escriben con permisos `0600` y quedan
+registradas en el log del servicio.
+
 ## Revocación, de punta a punta
 
 El WRPRC lleva `status.status_list = { idx, uri }` apuntando a una lista propia,

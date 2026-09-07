@@ -106,6 +106,7 @@ export async function readiness(store) {
 export async function rpReadiness(store) {
   const docs = await store.docs.list('*');
   const out = [];
+  const keyNames = new Set(await store.keys.list());
   for (const doc of docs) {
     if (!doc.walletRelyingParty) continue;
     const problems = assertRegistry(doc);
@@ -122,7 +123,13 @@ export async function rpReadiness(store) {
           published: await published(store, 'wrprc', `${svc.serviceIdentifier}-${u.intendedUseIdentifier}`),
         });
       }
-      services.push({ id: svc.serviceIdentifier, name: svc.serviceTradeName, uses });
+      // La convencion de nombre la fija `issueWrpac`: si esa clave existe, el
+      // access certificate de este servicio esta emitido y es descargable.
+      const accessKey = `${doc.id}-${svc.serviceIdentifier}-access`;
+      services.push({
+        id: svc.serviceIdentifier, name: svc.serviceTradeName, uses,
+        accessKey: keyNames.has(accessKey) ? accessKey : null,
+      });
     }
     out.push({ id: doc.id, legalName: wrp.legalName, problems, services });
   }

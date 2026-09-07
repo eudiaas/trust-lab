@@ -137,7 +137,34 @@ const cmds = {
     const r = await ops.checkStatus(store, { id: docId(stateId), idx, signerName });
     console.log(`posicion ${idx} de ${r.sub} → ${r.status}`);
   },
+
+  // trustlab export-key <nombre> [chain|bundle|key|jwk] [destino]
+  async 'export-key'([name, form = 'chain', dest]) {
+    const r = await ops.exportKey(store, crypto, { name, form });
+    await write(r, dest);
+  },
+
+  // trustlab export <tipo> <id> [destino]   (tipo: wrprc|lists|lote|status)
+  async export([kind, id, dest]) {
+    const r = await ops.exportArtifact(store, { kind, id: docId(id ?? '') });
+    await write(r, dest);
+  },
 };
+
+/** A fichero si dan destino, a stdout si no. El secreto nunca se anuncia solo. */
+async function write(r, dest) {
+  if (!dest) {
+    process.stdout.write(r.body.endsWith('\n') ? r.body : r.body + '\n');
+    if (r.secret) console.error('⚠ contiene la clave privada');
+    return;
+  }
+  const { writeFile, mkdir } = await import('node:fs/promises');
+  const { dirname: dn } = await import('node:path');
+  const out = dest.endsWith('/') ? join(dest, r.filename) : dest;
+  await mkdir(dn(out), { recursive: true });
+  await writeFile(out, r.body, { mode: r.secret ? 0o600 : 0o644 });
+  console.log(`${out}${r.secret ? ' (0600, contiene la clave privada)' : ''}`);
+}
 
 const [cmd, ...args] = process.argv.slice(2);
 if (!cmds[cmd]) {

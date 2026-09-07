@@ -226,3 +226,69 @@ export async function issueWrprc(store, crypto, { registryId, serviceId, useId, 
     dropped: droppedByEdition(registry),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Exportacion
+//
+// Emitir un certificado y no poder sacarlo lo deja donde no sirve: el access
+// certificate lo usa el RP en su propio despliegue y el registration
+// certificate viaja dentro de la peticion OID4VP. Asi que la fabrica tiene que
+// tener puerta de salida, y tiene que ser ESTA superficie —la autenticada— y
+// no el publisher, que a proposito no puede descifrar ninguna clave.
+// ---------------------------------------------------------------------------
+
+const wrapPem = (label, b64) =>
+  [`-----BEGIN ${label}-----`, ...(b64.match(/.{1,64}/g) ?? []), `-----END ${label}-----`].join('\n');
+
+export const KEY_FORMS = {
+  chain: { ext: 'crt.pem', contentType: 'application/x-pem-file', secret: false },
+  key: { ext: 'key.pem', contentType: 'application/x-pem-file', secret: true },
+  bundle: { ext: 'pem', contentType: 'application/x-pem-file', secret: true },
+  jwk: { ext: 'jwk.json', contentType: 'application/json', secret: true },
+};
+
+/**
+ * Material de una clave del almacen, en la forma que pida quien la consume.
+ *
+ * `chain` es lo unico que no es secreto: es el certificado y su cadena, que es
+ * justo lo que se pinea en el otro extremo (el `AV_TRUST_LIST_SIGNER_CERT_*`
+ * de espuni, por ejemplo). Las otras tres llevan la privada dentro.
+ */
+export async function exportKey(store, crypto, { name, form = 'chain' }) {
+  const spec = KEY_FORMS[form];
+  if (!spec) throw new OpError(`formato desconocido: ${form}`, [`usa uno de: ${Object.keys(KEY_FORMS).join(', ')}`]);
+  const stored = await loadKey(store, name);
+  const chain = (stored.crt ?? []).join('\n');
+  if (!chain) throw new OpError(`la clave "${name}" no tiene certificado`);
+
+  if (form === 'chain') {
+    return { filename: `${name}.${spec.ext}`, contentType: spec.contentType, body: `${chain}\n`, secret: false };
+  }
+  if (form === 'jwk') {
+    const { pemToBase64Der } = await import('../../signer/src/index.mjs');
+    const body = JSON.stringify({ ...stored.key, x5c: (stored.crt ?? []).map(pemToBase64Der) }, null, 2);
+    return { filename: `${name}.${spec.ext}`, contentType: spec.contentType, body, secret: true };
+  }
+
+  const key = await crypto.subtle.importKey('jwk', stored.key, P256, true, ['sign']);
+  const pkcs8 = Buffer.from(await crypto.subtle.exportKey('pkcs8', key)).toString('base64');
+  const keyPem = wrapPem('PRIVATE KEY', pkcs8);
+  const body = form === 'key' ? `${keyPem}\n` : `${keyPem}\n${chain}\n`;
+  return { filename: `${name}.${spec.ext}`, contentType: spec.contentType, body, secret: true };
+}
+
+/** Un artefacto emitido, byte a byte como se publicaria. */
+export async function exportArtifact(store, { kind, id, sequence }) {
+  const a = sequence
+    ? await store.artifacts.get(kind, id, Number(sequence))
+    : await store.artifacts.latest(kind, id);
+  if (!a) throw new OpError(`no hay ningun artefacto "${kind}/${id}"${sequence ? ` con secuencia ${sequence}` : ''}`);
+  const ext = { wrprc: 'jwt', lote: 'jws', status: 'jws', lists: 'xml' }[kind] ?? 'txt';
+  return {
+    filename: `${id}-${a.sequence}.${ext}`,
+    contentType: a.contentType ?? 'application/octet-stream',
+    body: a.body,
+    sequence: a.sequence,
+    secret: false,
+  };
+}

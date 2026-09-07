@@ -172,7 +172,8 @@ export function keysPage({ keys, signers, schemes, flash }) {
     .map(
       (k) => `<tr><td class="mono">${esc(k.name)}</td><td class="mono" style="color:var(--dim)">${esc(k.subject ?? '')}</td>
       <td>${k.encrypted ? '<span class="pill ok">cifrada</span>' : '<span class="pill warn">en claro</span>'}</td>
-      <td>${k.tlso ? (k.tlso.errors.length ? `<span class="pill bad">no cumple 5.7.1</span>` : '<span class="pill ok">TLSO valido</span>') : ''}</td></tr>`,
+      <td>${k.tlso ? (k.tlso.errors.length ? `<span class="pill bad">no cumple 5.7.1</span>` : '<span class="pill ok">TLSO valido</span>') : ''}</td>
+      <td class="meta">${keyLinks(k.name)}</td></tr>`,
     )
     .join('');
 
@@ -180,8 +181,11 @@ export function keysPage({ keys, signers, schemes, flash }) {
     title: 'Claves',
     path: '/keys', flash,
     body: `<h1>Claves y certificados</h1>
-    <p class="lead">El material privado se cifra en reposo. La consola nunca lo muestra ni lo exporta.</p>
-    <table><tr><th>Nombre</th><th>Subject</th><th>Reposo</th><th>Perfil</th></tr>${rows}</table>
+    <p class="lead">El material privado se cifra en reposo y nunca se muestra en pantalla, pero
+    <strong>si se puede descargar</strong> desde aqui: un access certificate que no sale de la fabrica
+    no le sirve a nadie. Las descargas marcadas con 🔑 contienen la clave privada y quedan registradas
+    en el log del servicio. El publisher no tiene ninguna de estas rutas.</p>
+    <table><tr><th>Nombre</th><th>Subject</th><th>Reposo</th><th>Perfil</th><th>Descargar</th></tr>${rows}</table>
 
     <h2>Emitir</h2>
     <div class="card">
@@ -231,6 +235,21 @@ export function docPage({ id, doc, problems, title, back, flash }) {
   });
 }
 
+/**
+ * Enlaces de descarga de una clave. La cadena va primero y sin aviso porque no
+ * es secreta —es lo que se pinea en el otro extremo—; las otras tres llevan la
+ * privada dentro y se marcan como tal.
+ */
+function keyLinks(name) {
+  const n = encodeURIComponent(name);
+  return [
+    `<a href="/download/key/${n}?form=chain">cadena .crt</a>`,
+    `<a href="/download/key/${n}?form=bundle" title="clave privada + cadena">bundle .pem 🔑</a>`,
+    `<a href="/download/key/${n}?form=key" title="solo la clave privada">clave .pem 🔑</a>`,
+    `<a href="/download/key/${n}?form=jwk" title="JWK privada con x5c">jwk 🔑</a>`,
+  ].join(' · ');
+}
+
 export function rpPage({ rp, statusLists, signers, cas, flash }) {
   const services = rp.services
     .map(
@@ -238,8 +257,14 @@ export function rpPage({ rp, statusLists, signers, cas, flash }) {
       <form class="inline" method="post" action="/rps/${encodeURIComponent(rp.id)}/wrpac">
         <input type="hidden" name="service" value="${esc(s.id)}">
         <select name="ca">${cas.map((c) => `<option>${esc(c)}</option>`).join('')}</select>
-        <button>Emitir access certificate</button>
+        <button>${s.accessKey ? 'Reemitir' : 'Emitir'} access certificate</button>
       </form>
+      ${
+        s.accessKey
+          ? `<div class="meta" style="margin-top:.4rem">Access certificate <span class="mono">${esc(s.accessKey)}</span> ·
+             ${keyLinks(s.accessKey)}</div>`
+          : ''
+      }
       <table style="margin-top:.7rem"><tr><th>Finalidad</th><th>Credenciales</th><th>Revocacion</th><th>WRPRC</th></tr>
       ${s.uses
         .map(
@@ -247,7 +272,11 @@ export function rpPage({ rp, statusLists, signers, cas, flash }) {
           <td>${u.credentials}</td>
           <td class="mono">${u.statusIndex === undefined ? '<span class="pill warn">sin posicion</span>' : `#${u.statusIndex}`}</td>
           <td>${
-            u.published ? '<span class="pill ok">emitido</span>' : '<span class="pill dim">no emitido</span>'
+            u.published
+              ? `<span class="pill ok">emitido</span> <a href="/download/wrprc/${encodeURIComponent(
+                  `${s.id}-${u.id}`,
+                )}">descargar .jwt</a>`
+              : '<span class="pill dim">no emitido</span>'
           }
           <form class="inline" method="post" action="/rps/${encodeURIComponent(rp.id)}/wrprc">
             <input type="hidden" name="service" value="${esc(s.id)}">

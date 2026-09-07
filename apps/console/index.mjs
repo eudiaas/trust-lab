@@ -56,7 +56,13 @@ function authenticated(req) {
   return expected.length === got.length && timingSafeEqual(expected, got);
 }
 
-const store = await openStore({ root: ROOT });
+// Un fallo de configuracion —falta la base de datos, falta la clave— es un
+// mensaje que el operador tiene que poder leer en los logs de Railway, no una
+// pila de llamadas.
+const store = await openStore({ root: ROOT }).catch((err) => {
+  console.error(`error: ${err.message}`);
+  process.exit(1);
+});
 
 async function body(req) {
   const chunks = [];

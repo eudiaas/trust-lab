@@ -44,5 +44,18 @@ export async function openStore({ root, needsKeys = true } = {}) {
     return withKeys(store, 'el almacen SQL');
   }
 
+  // En Railway el sistema de ficheros es efimero y cada servicio tiene el suyo:
+  // caer al almacen de fichero ahi no daria un error, daria algo peor — la
+  // consola escribiria en un disco que el publisher no ve, y todo se perderia
+  // en el siguiente despliegue. Como el pin ES la clave y la URL viaja dentro
+  // de artefactos firmados, eso no se recupera reemitiendo.
+  if (process.env.RAILWAY_ENVIRONMENT_NAME || process.env.RAILWAY_ENVIRONMENT) {
+    throw new Error(
+      'falta DATABASE_URL. En Railway el disco es efimero y no se comparte entre ' +
+        'servicios: el almacen de fichero perderia las claves en cada despliegue y ' +
+        'el publisher no veria lo que emite la consola. Anade el plugin de Postgres.',
+    );
+  }
+
   return withKeys(fileStore({ root }), 'el almacen de fichero');
 }

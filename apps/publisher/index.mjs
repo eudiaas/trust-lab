@@ -11,7 +11,7 @@
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
-import { fileStore, sqlStore, pgQuery, pgliteQuery } from '../../packages/store/src/index.mjs';
+import { openStore } from '../../packages/store/src/index.mjs';
 
 const ROOT = join(dirname(new URL(import.meta.url).pathname), '../..');
 const PORT = Number(process.env.PORT ?? 8080);
@@ -31,30 +31,18 @@ const ROUTES = {
   status: { kind: 'status', contentType: 'application/statuslist+jwt' },
 };
 
-async function openStore() {
-  if (process.env.TRUST_LAB_PGLITE) {
-    const { PGlite } = await import('@electric-sql/pglite');
-    const db = await PGlite.create(process.env.TRUST_LAB_PGLITE);
-    const store = sqlStore({ query: pgliteQuery(db), close: () => db.close() });
-    await store.migrate();
-    return store;
-  }
-  if (process.env.DATABASE_URL) {
-    const { default: pg } = await import('pg');
-    const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
-    const store = sqlStore({ query: pgQuery(pool), close: () => pool.end() });
-    await store.migrate();
-    return store;
-  }
-  return fileStore({ root: ROOT });
-}
-
 /**
  * El publisher NO abre el almacen de claves ni lo necesita: sirve artefactos ya
  * firmados. Por eso tampoco pide TRUST_LAB_KEY — desplegarlo no expone el
  * material privado ni siquiera a su propio proceso.
  */
-const store = await openStore();
+// Un fallo de configuracion —falta la base de datos, falta la clave— es un
+// mensaje que el operador tiene que poder leer en los logs de Railway, no una
+// pila de llamadas.
+const store = await openStore({ root: ROOT, needsKeys: false }).catch((err) => {
+  console.error(`error: ${err.message}`);
+  process.exit(1);
+});
 
 const stripExt = (s) => s.replace(/\.(xml|json|jwt)$/, '');
 

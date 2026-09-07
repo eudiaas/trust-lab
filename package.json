@@ -10,7 +10,6 @@
     "trustlab": "node apps/cli/index.mjs"
   },
   "dependencies": {
-    "@electric-sql/pglite": "^0.5.8",
     "@owf/eudi-lote": "^0.3.2",
     "@owf/eudi-tl": "0.4.0-alpha-20260901082001",
     "@owf/eudi-wrprc": "^0.3.2",
@@ -23,5 +22,12 @@
     "reflect-metadata": "^0.2.2",
     "xadesjs": "^2.6.8",
     "xml-core": "^1.0.1"
-  }
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "description": "Fabrica de material de confianza EUDI para entornos de prueba"
 }

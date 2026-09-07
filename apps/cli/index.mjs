@@ -43,6 +43,15 @@ const cmds = {
     for (const w of r.warnings) console.warn('  ⚠ ' + w);
   },
 
+  // trustlab mint-signer <ca> <nombre> <rol> "<DN>"
+  //   roles: mdoc-ds | pid-ds | wrprc | wia | key-attestation
+  async 'mint-signer'([issuer, name, role, subject]) {
+    const r = await ops.mintSigner(store, crypto, { issuer, name, role, subject });
+    console.log(`${r.spec.label} ${r.name}: ${r.subject}`);
+    console.log(`  cuelga de ${r.issuer} · publicar ese ancla en ${r.spec.lista}`);
+    console.log(`  ${r.spec.nota}`);
+  },
+
   // trustlab mint-wrpac <ca> <registro> <servicio> [nombre]
   async 'mint-wrpac'([caName, registryRef, serviceId, keyName]) {
     const r = await ops.issueWrpac(store, crypto, {
@@ -80,6 +89,13 @@ const cmds = {
     });
     await store.docs.put(state.kind, docId(stateId), state);
     console.log(`anadido ${displayName} a ${stateId} (${state.providers.length} en total)`);
+  },
+
+  // trustlab remove-provider <estado> <indice|nombre>
+  async 'remove-provider'([stateId, ref]) {
+    const r = await ops.removeProvider(store, { id: docId(stateId), ref });
+    console.log(`quitado "${r.removed}" de ${r.id} (${r.remaining} restante(s))`);
+    console.log('  no publica: hay que reemitir la lista');
   },
 
   // trustlab build-list <estado> <firmante>

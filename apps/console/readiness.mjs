@@ -6,7 +6,7 @@
 // orden de los comandos, y es donde se cometen los errores caros: emitir una
 // lista con un firmante que no cumple el perfil, o un WRPRC apuntando a una
 // status list que no existe.
-import { assertTlsoProfile } from '../../packages/ca/src/index.mjs';
+import { assertTlsoProfile, describeKey } from '../../packages/ca/src/index.mjs';
 import { assertRegistry } from '../../packages/registry/src/index.mjs';
 import { assertAvProfile } from '../../packages/tl-xml/src/av-profile.mjs';
 import { LIST_PROFILES } from '../../packages/lote/src/index.mjs';
@@ -29,6 +29,35 @@ export async function tlsoCandidates(store, state) {
       continue;
     }
     out.push({ name, subject: doc.subject, errors: verdict.errors, warnings: verdict.warnings });
+  }
+  return out;
+}
+
+/**
+ * Claves que pueden firmar un WRPRC.
+ *
+ * NO es lo mismo que un firmante de listas. TS 119 475 no le pide al firmante
+ * de un registration certificate el EKU `id-tsl-kp-tslSigning`: eso es de
+ * TS 119 612 y solo aplica a quien firma listas. Exigirlo aqui cerraba el
+ * marco: obligaba a firmar los WRPRC con el TLSO, que no encadena con la CA
+ * declarada en la lista de prestadores de WRPRC, asi que la cadena no llegaba
+ * a ninguna parte. Aqui la pregunta es la que corresponde: no ser CA y poder
+ * firmar.
+ */
+export async function signingCandidates(store) {
+  const out = [];
+  for (const name of await store.keys.list()) {
+    const doc = await store.keys.get(name);
+    const cert = doc?.crt?.[0];
+    if (!cert) continue;
+    let d;
+    try {
+      d = describeKey(cert);
+    } catch {
+      continue;
+    }
+    if (d.role === 'ilegible' || d.ca) continue;
+    out.push({ name, subject: doc.subject, role: d.role, expired: d.expired });
   }
   return out;
 }

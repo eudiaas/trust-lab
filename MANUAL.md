@@ -100,77 +100,173 @@ WASM, sin servidor — es el que usan los tests) → `DATABASE_URL` → fichero
 
 ---
 
-## 4. El orden de las cosas
+## 4. El marco completo, de un vistazo
 
-Nada de esto es opcional ni reordenable. Cada paso necesita el anterior:
+Un marco de confianza son **cinco listas y tres jerarquías de certificados**, y
+todo encaja por el mismo mecanismo: *un artefacto vale si su cadena termina en
+un ancla que publica la lista que le corresponde*. Nada más. No hay OID mágico
+ni perfil que sustituya a eso.
+
+| Quién firma qué | Certificado | Cuelga de | Su ancla se publica en |
+|---|---|---|---|
+| las cinco listas | firmante de listas (TLSO) | nadie (autofirmado) | se **pinea** en el consumidor |
+| las atestaciones de edad | Document Signer de AV | IACA de AV | `av-lab` (AV Trusted List) |
+| el PID | Document Signer del PID | CA del PID provider | `pid-lab` |
+| la Wallet Instance Attestation | firmante de WIA | CA del wallet provider | `wallet-lab` |
+| las Key Attestation | firmante de KA | CA del wallet provider | `wallet-lab` |
+| — (los emite) | access certificate de la RP | CA de acceso | `wrpac-lab` |
+| los registration certificates | firmante de WRPRC | CA del proveedor de WRPRC | `wrprc-lab` |
+| — (se revocan) | los WRPRC | — | `status-wrprc` |
+
+El **firmante de listas es la excepción**: no está en ninguna lista, porque es
+quien las firma. Su certificado se pinea en el otro extremo, y eso es lo que
+convierte a las listas en evidencia. Es también el único ancla del laboratorio
+que hay que instalar a mano en la wallet.
+
+El orden se deduce de la tabla y no es reordenable:
 
 ```
-firmante de listas (TLSO)
-   ├── AV Trusted List (XML)  ← necesita además un PAAP con su certificado
-   ├── LoTE de PID / wallet providers / WRPAC / WRPRC
-   ├── status list de revocación
-   └── firma los WRPRC
-CA de acceso
-   └── access certificate (WRPAC)  ← necesita el registro de la RP
-registro de la RP
-   ├── access certificate   (uno por servicio)
+firmante de listas (TLSO)  ──────── firma las cinco listas
+IACA de AV ──→ DS de AV ───────────→ av-lab
+CA del PID ──→ DS del PID ─────────→ pid-lab
+CA del wallet ──→ WIA · KA ────────→ wallet-lab
+CA de acceso ──────────────────────→ wrpac-lab
+   └── access certificate (uno por servicio de la RP)
+CA de WRPRC ──→ firmante WRPRC ────→ wrprc-lab
    └── registration certificate (uno por finalidad)
+status list ───────────────────────→ revoca los WRPRC
 ```
 
-El **dashboard** de la consola (`/`) es exactamente ese grafo: cada tarjeta dice
-si algo se puede emitir ya o qué falta. Si no sabes cuál es el siguiente paso,
-la respuesta está ahí.
+El **dashboard** de la consola (`/`) es ese grafo calculado sobre el almacén:
+cada tarjeta dice si algo se puede emitir ya o qué falta. Si no sabes cuál es el
+siguiente paso, la respuesta está ahí.
+
+> ⚠ **Las listas vienen sembradas con un proveedor de ejemplo cuya clave privada
+> no existe.** Son anclas que nadie puede usar. Un despliegue nuevo tiene que
+> quitarlas y poner las suyas (`remove-provider`, §5.3); si no, las listas
+> declaran confianza en material que no puedes emitir.
 
 ---
 
-## 5. Paso a paso
+## 5. Desplegar el marco completo
 
-### 5.1 Firmante de listas
+Esto es el guion entero. Ejecutado tal cual, deja un marco de confianza
+funcionando: cinco listas firmadas y publicadas, y una relying party con sus dos
+certificados.
 
-Es el primer requisito de todo: sin él no se firma ninguna lista y, por tanto,
-no se emite ningún WRPRC. Lleva el perfil de la **cláusula 5.7.1 de
-TS 119 612**: `CA=false`, `KeyUsage` acotado a `digitalSignature`/
-`nonRepudiation`, EKU `id-tsl-kp-tslSigning` (`0.4.0.2231.3.0`) y un subject
-cuyos `C` y `O` salen del esquema que va a firmar.
+Los ejemplos van con el CLI porque se leen mejor en orden; **todo tiene su
+equivalente en la consola** y se indica en cada paso.
 
-> Consola: **Claves → Firmante de listas (TLSO)**, eligiendo el esquema.
+### 5.1 Firmante de listas (TLSO)
+
+Primer requisito de todo: sin él no se firma ninguna lista. Lleva el perfil de
+la **cláusula 5.7.1 de TS 119 612** — `CA=false`, `KeyUsage` acotado a
+`digitalSignature`/`nonRepudiation`, EKU `id-tsl-kp-tslSigning`
+(`0.4.0.2231.3.0`), y un subject cuyos `C` y `O` salen del esquema.
 
 ```bash
 node apps/cli/index.mjs mint-tl-signer tl-signer av-lab
 ```
 
-Que el `C` no coincida con el territorio del esquema es un **aviso**, no un
-error: la AV TL de producción hace exactamente eso (`C=LU` con territorio `EU`).
+> Consola: **Claves → Firmante de listas (TLSO)**.
 
-### 5.2 Las listas
+Las cinco listas del laboratorio declaran el mismo *scheme operator*
+(`espuni Trust Lab`, territorio `EU`), así que **uno sirve para todas**. Si el
+`C` no coincide con el territorio es un **aviso**, no un error: la AV TL de
+producción hace exactamente eso (`C=LU` con territorio `EU`).
 
-`state/` trae siete documentos sembrados: un registro de relying party de
-ejemplo (`espuni-rp`, §5.4) y seis de listas:
+### 5.2 Las tres jerarquías de emisión
 
-| Documento | Formato | Qué contiene |
-|---|---|---|
-| `av-lab` | ETSI TS 119 612 (XML + XAdES) | proveedores de atestación de edad (PAAP) |
-| `pid-lab` | ETSI TS 119 602 (LoTE, JSON en JWS) | PID providers |
-| `wallet-lab` | LoTE | wallet providers |
-| `wrpac-lab` | LoTE | prestadores de certificados de acceso |
-| `wrprc-lab` | LoTE | prestadores de certificados de registro |
-| `status-wrprc` | IETF Token Status List | revocación de los WRPRC (1024 posiciones) |
-
-Una lista se emite en dos tiempos: **poblarla** y **firmarla**.
+Una CA por dominio, y debajo el certificado que firma de verdad. La CA es lo que
+va a la lista; la hoja es lo que firma.
 
 ```bash
-# la AV TL lleva PAAPs, con el Estado miembro que los notifica
-node apps/cli/index.mjs mint-ca av-issuer "CN=AV Issuer, O=Lab, C=ES"
-node apps/cli/index.mjs add-provider av-lab av-issuer "Lab AV Issuer" ES
-node apps/cli/index.mjs build-list av-lab tl-signer
+T="node apps/cli/index.mjs"
 
-# las LoTE llevan entidades, con clave de emisión y opcionalmente de revocación
-node apps/cli/index.mjs mint-ca pid-issuer "CN=PID Issuer, O=Lab, C=ES"
-node apps/cli/index.mjs add-entity pid-lab pid-issuer "Lab PID Provider"
-node apps/cli/index.mjs build-lote pid-lab tl-signer
+# AV — la Trusted List lleva el DS, no la IACA
+$T mint-ca     av-iaca "C=ES, O=Lab AV Attestation Provider, CN=Lab AV IACA"
+$T mint-signer av-iaca av-ds mdoc-ds "C=ES, O=Lab AV Attestation Provider, CN=Lab AV DS 01"
+
+# PID
+$T mint-ca     pid-ca "C=ES, O=Lab PID Provider, CN=Lab PID Issuing CA"
+$T mint-signer pid-ca pid-ds pid-ds "C=ES, O=Lab PID Provider, CN=Lab PID DS 01"
+
+# Wallet provider — WIA y Key Attestation
+$T mint-ca     wallet-ca "C=ES, O=Lab Wallet Provider, CN=Lab Wallet Provider CA"
+$T mint-signer wallet-ca wia-signer wia "C=ES, O=Lab Wallet Provider, CN=Lab WIA Signer 01"
+$T mint-signer wallet-ca ka-signer key-attestation "C=ES, O=Lab Wallet Provider, CN=Lab KA Signer 01"
+
+# Acceso y registro de relying parties
+$T mint-ca     wrpac-ca "C=ES, O=Lab Access CA, CN=Lab WRPAC Issuing CA"
+$T mint-ca     wrprc-ca "C=ES, O=Lab RC Provider, CN=Lab WRPRC Issuing CA"
+$T mint-signer wrprc-ca wrprc-signer wrprc "C=ES, O=Lab RC Provider, CN=Lab WRPRC Signer 01"
 ```
 
-> Consola: **Listas** para poblar (`Editar`) y el dashboard para firmar.
+> Consola: **Claves → CA / hoja** para las CAs, **Claves → Firmante de
+> credenciales o atestaciones** para los cinco firmantes.
+
+Los cinco roles de `mint-signer`:
+
+| Rol | Qué firma | Perfil |
+|---|---|---|
+| `mdoc-ds` | atestaciones de edad (MSO) | hoja + EKU `1.0.18013.5.1.2` |
+| `pid-ds` | el PID | igual; cambia de quién cuelga |
+| `wrprc` | registration certificates | hoja, sin EKU |
+| `wia` | Wallet Instance Attestation | hoja, sin EKU |
+| `key-attestation` | Key Attestation | hoja, sin EKU |
+
+**Por qué unos llevan EKU y otros no.** El de mdoc es el Document Signer de
+ISO/IEC 18013-5, que sí lo define. En los otros tres, la confianza la establece
+el **encadenamiento con el ancla publicada**, no un OID: TS 119 475 no le pide
+ningún EKU al firmante de un WRPRC — el `id-tsl-kp-tslSigning` es de TS 119 612
+y solo aplica a quien firma listas. Aquí no se inventan OIDs: un OID que la
+norma no exige no añade confianza y sí puede hacer que un validador estricto
+rechace el certificado.
+
+> Antes de esto solo había dos perfiles de hoja con nombre —el firmante de
+> listas y el access certificate— y en la práctica los WRPRC acababan firmados
+> con el TLSO, que **no encadena** con la CA declarada en `wrprc-lab`. Una
+> cadena que no llega a la lista no es una cadena.
+
+### 5.3 Poblar las listas
+
+Cada lista se puebla con el **ancla** de su dominio. Primero hay que quitar el
+proveedor de ejemplo que viene sembrado, porque su clave privada no existe:
+
+```bash
+for L in av-lab pid-lab wallet-lab wrpac-lab wrprc-lab; do
+  $T remove-provider $L 0
+done
+
+$T add-provider av-lab     av-ds         "Lab AV Attestation Provider" ES
+$T add-entity   pid-lab    pid-ds        "Lab PID Provider"
+$T add-entity   wallet-lab wia-signer    "Lab Wallet Provider"
+$T add-entity   wrpac-lab  wrpac-ca      "Lab Access Certificate Provider"
+$T add-entity   wrprc-lab  wrprc-signer  "Lab Registration Certificate Provider"
+```
+
+> Consola: **Listas → Editar** (el registro se edita como documento JSON).
+
+Los dos comandos no son intercambiables, y toman cosas distintas:
+
+- **`add-provider`** puebla la **AV Trusted List** (XML) y guarda el certificado
+  que le nombras, tal cual. Por eso se le pasa el **DS**: es lo que lleva la AV
+  TL real. Necesita además el código del Estado miembro que notifica al PAAP.
+- **`add-entity`** puebla una **LoTE** (JSON en JWS) y guarda el **ancla de la
+  cadena** —la raíz, no la hoja—, así que da igual si le nombras la CA o algo
+  que cuelgue de ella. Admite una segunda clave para el servicio de revocación.
+
+### 5.4 Firmar y publicar las listas
+
+```bash
+$T build-list av-lab tl-signer                      # XML + XAdES
+for L in pid-lab wallet-lab wrpac-lab wrprc-lab; do
+  $T build-lote $L tl-signer                        # JSON en JWS
+done
+$T status-build status-wrprc tl-signer              # lista de revocación
+```
+
+> Consola: el dashboard, botón de cada tarjeta.
 
 Cada emisión **se verifica antes de guardarse**: la AV TL contra el Anexo B de
 TS 119 612 y el perfil de la Comisión, y se relee con `@owf/eudi-tl` —la misma
@@ -181,29 +277,35 @@ El XML es el caro: XAdES *enveloped*, canonicalización **exclusiva**,
 `SigningCertificateV2`. Los valores por defecto de la librería de firma están
 mal en los cuatro puntos, así que se fijan a mano.
 
-### 5.3 CA de acceso
+**Firmar no publica**: deja el artefacto en el almacén. El publisher sirve lo
+último emitido de cada documento, en **la ruta que ese documento declara**.
 
 ```bash
-node apps/cli/index.mjs mint-ca access-ca "CN=Lab Access CA, O=Lab, C=ES"
+curl -s https://<publisher>/                      # índice de lo publicado
+curl -sI https://<publisher>/lists/av-lab.xml     # Content-Type correcto
+curl -s -X POST https://<publisher>/lists/av-lab.xml   # 405: nunca escribe
 ```
 
-> Consola: **Claves → CA / hoja**.
+⚠ **La URL viaja dentro de lo firmado**: el `sub` de la status list, el puntero
+de la AV TL a sí misma, el `status.status_list.uri` de cada WRPRC. Si vas a
+servir en un dominio distinto de `trust-lab.espuni.com`, **edita el campo `url`
+de cada documento antes de emitir nada**. Cambiarlo después no arregla lo ya
+firmado: hay que reemitir.
 
-En producción esta CA sería un prestador acreditado bajo TS 119 411-8. Aquí es
-una raíz que te has creado tú; para que una wallet la acepte, tiene que estar
-en la LoTE `wrpac-lab` y la wallet tiene que confiar en esa lista.
-
-### 5.4 Dar de alta una relying party
+### 5.5 Dar de alta una relying party
 
 > Consola: formulario al final de **Relying parties**.
 
 ```bash
-node apps/cli/index.mjs new-rp bodegas-valle "Bodegas del Valle S.A." A87654321 ES status-wrprc
+$T new-rp bodegas "Bodegas del Valle S.A." A87654321 ES status-wrprc
 ```
 
 Crea un esqueleto **que ya valida** contra TS5/TS6, con un servicio y una
 finalidad de ejemplo (AV, `age_over_18` sobre `eu.europa.ec.av.1`), y **reserva
-una posición libre** en la lista de revocación.
+una posición libre** en la lista de revocación. Reservarla en el alta y no al
+emitir el certificado es deliberado: dos altas que eligen la misma posición se
+detectan cuando no cuesta nada, y no cuando ya hay material firmado apuntando a
+una posición compartida — que es como se revocan dos RP de golpe.
 
 Lo que queda por rellenar va marcado como `PENDIENTE — …`. Se edita desde
 `Editar el registro`, como documento JSON y no como formulario: el modelo de TS5
@@ -223,64 +325,58 @@ WalletRelyingParty          ← la entidad legal registrada
 El identificador semántico (`VATES-B12345678`) **se deriva** del identificador
 tipado del registro; no se escribe a mano en ninguno de los dos certificados.
 
-### 5.5 Access certificate (WRPAC)
+### 5.6 Los dos certificados de la relying party
 
-Uno **por servicio**.
-
-> Consola: **Relying parties → \<la RP\> → Emitir access certificate**.
+Uno de acceso **por servicio**, uno de registro **por finalidad**:
 
 ```bash
-node apps/cli/index.mjs mint-wrpac access-ca bodegas-valle svc-1
+$T mint-wrpac  wrpac-ca bodegas svc-1              # access certificate
+$T issue-wrprc bodegas svc-1 use-1 wrprc-signer    # registration certificate
 ```
 
-Sale con la política `NCP-l-eudiwrp` (`0.4.0.194118.1.2`) y el
-`organizationIdentifier` derivado del registro. Sus atributos **salen del
-registro**, no de argumentos sueltos: GEN-6.6.1-10 de TS 119 411-8 lo exige así.
+> Consola: **Relying parties → \<la RP\>**.
 
-### 5.6 Registration certificate (WRPRC)
+El access certificate sale con la política `NCP-l-eudiwrp`
+(`0.4.0.194118.1.2`) y el `organizationIdentifier` derivado del registro. Sus
+atributos **salen del registro**, no de argumentos sueltos: GEN-6.6.1-10 de
+TS 119 411-8 lo exige así.
 
-Uno **por finalidad**. Es un JWS compacto (`typ: rc-wrp+jwt`), no un X.509, y lo
-firma un firmante de listas.
+El WRPRC es un JWS compacto (`typ: rc-wrp+jwt`), no un X.509. Se emite en la
+edición **v1.2.1** de TS 119 475 y se relee para confirmar qué edición detecta
+un consumidor. Si el registro declara campos que la edición vigente no
+transporta, se avisa al emitir en vez de perderlos en silencio.
 
-> Consola: **Relying parties → \<la RP\>**, botón `Emitir` de cada finalidad.
+**Fíjate en quién firma cada uno**: el access certificate lo emite `wrpac-ca`,
+que es el ancla de `wrpac-lab`; el WRPRC lo firma `wrprc-signer`, que cuelga de
+`wrprc-ca`, que es el ancla de `wrprc-lab`. Ese emparejamiento es todo el
+mecanismo. Firmar con la clave equivocada produce artefactos que validan
+criptográficamente y no encadenan con nada.
+
+### 5.7 Comprobar que el marco cierra
+
+La pregunta que importa no es «¿se emitió?», sino «¿termina la cadena en el
+ancla publicada?». Se responde comparando huellas:
 
 ```bash
-node apps/cli/index.mjs issue-wrprc bodegas-valle svc-1 use-1 tl-signer
+$T export wrprc bodegas-svc-1-use-1 /tmp/w.jwt
+$T export-key bodegas-svc-1-access chain /tmp/ac.pem
 ```
 
-Se emite en la edición **v1.2.1** de TS 119 475 y se relee para confirmar qué
-edición detecta un consumidor. Si el registro declara campos que la edición
-vigente no transporta, se avisa al emitir en vez de perderlos en silencio.
+- La **última entrada del `x5c`** del WRPRC tiene que ser, byte a byte, el
+  `issuanceCertPem` del proveedor en `wrprc-lab`.
+- El **último certificado de la cadena** del access certificate tiene que ser el
+  de `wrpac-lab`.
 
-### 5.7 Publicar
-
-Firmar **no publica**: deja el artefacto en el almacén. El publisher sirve lo
-último emitido de cada documento, en **la ruta que ese documento declara** en su
-campo `url`.
-
-```bash
-curl -s https://<publisher>/                      # índice de lo publicado
-curl -sI https://<publisher>/lists/av-lab.xml     # Content-Type correcto
-curl -s -X POST https://<publisher>/lists/av-lab.xml   # 405, nunca escribe
-```
-
-⚠ **La URL viaja dentro de lo firmado**: el `sub` de la status list, el puntero
-de la AV TL a sí misma, el `status.status_list.uri` de cada WRPRC. Si vas a
-servir en un dominio distinto de `trust-lab.espuni.com`, **edita el campo `url`
-de cada documento antes de emitir nada**. Cambiarlo después no arregla lo ya
-firmado: hay que reemitir.
-
-El índice `/` muestra, por documento, `path` (donde se sirve), `canonical`
-(el atajo `/tipo/id`, que además admite versiones históricas) y `declaredUrl`.
-Si `path` y `declaredUrl` no coinciden, algo está mal.
+Si no coinciden, la wallet rechazará el artefacto aunque la firma sea válida —
+y ese es el fallo que este laboratorio existe para provocar y detectar.
 
 ### 5.8 Revocar
 
 ```bash
-node apps/cli/index.mjs status-check status-wrprc 0 tl-signer   # → valid
-node apps/cli/index.mjs status-set   status-wrprc 0 invalid "finalidad retirada"
-node apps/cli/index.mjs status-build status-wrprc tl-signer
-node apps/cli/index.mjs status-check status-wrprc 0 tl-signer   # → invalid
+$T status-check status-wrprc 0 tl-signer   # → valid
+$T status-set   status-wrprc 0 invalid "finalidad retirada"
+$T status-build status-wrprc tl-signer
+$T status-check status-wrprc 0 tl-signer   # → invalid
 ```
 
 > Consola: **Revocación**.
@@ -336,6 +432,10 @@ marco necesita, según lo que esté comprobando:
 Cada lista se pinea por su **firmante**, no por su URL: es lo que la convierte
 en evidencia. Cambiar de firmante obliga a re-pinear en el otro extremo.
 
+Como las cinco listas del laboratorio las firma el mismo TLSO, en la práctica
+**solo hay un ancla que instalar a mano** en la wallet; todo lo demás lo
+descubre siguiendo las listas.
+
 ---
 
 ## 8. Referencia
@@ -346,7 +446,7 @@ en evidencia. Cambiar de firmante obliga a re-pinear en el otro extremo.
 |---|---|
 | `/` | dashboard: el grafo de dependencias, qué se puede emitir y qué falta |
 | `/lists` | los documentos de lista, su estado de publicación y el editor |
-| `/keys` | pares clave+certificado: qué es cada uno, caducidad y descargas |
+| `/keys` | pares clave+certificado: qué es cada uno, caducidad y descargas; emisión de CAs, del firmante de listas y de los firmantes de credenciales |
 | `/rps` | relying parties, alta de nuevas |
 | `/rps/:id` | servicios, finalidades, emisión y descarga de sus certificados |
 | `/status` | posiciones de revocación |
@@ -356,15 +456,18 @@ en evidencia. Cambiar de firmante obliga a re-pinear en el otro extremo.
 
 ```
 mint-ca <nombre> "<DN>"                             CA raíz autofirmada
-mint-leaf <ca> <nombre> "<DN>"                      hoja firmada por esa CA
+mint-leaf <ca> <nombre> "<DN>"                      hoja genérica
 mint-tl-signer <nombre> <esquema>                   firmante de listas (5.7.1)
+mint-signer <ca> <nombre> <rol> "<DN>"              firmante de credenciales
+      roles: mdoc-ds | pid-ds | wrprc | wia | key-attestation
 mint-wrpac <ca> <registro> <servicio> [nombre]      access certificate
 
 new-rp <id> "<razón social>" <valor-id> [país] [lista-revocación] [tipo-id]
 issue-wrprc <registro> <servicio> <finalidad> <firmante>
 
-add-provider <estado> <clave> "<nombre>" <CC>       PAAP en la AV TL
-add-entity <estado> <clave-emisión> "<nombre>" [clave-revocación]
+add-provider <estado> <clave> "<nombre>" <CC>       PAAP en la AV TL (el DS)
+add-entity <estado> <clave-emisión> "<nombre>" [clave-revocación]   ancla en una LoTE
+remove-provider <estado> <índice|nombre>            quita una entrada
 build-list <estado> <firmante>                      firma la AV TL (XML)
 build-lote <estado> <firmante>                      firma una LoTE (JSON/JWS)
 
@@ -419,6 +522,16 @@ RP no se pisen el certificado.
 **El nombre de una clave no dice lo que es.** Lo pone quien la emite. El rol —CA,
 firmante de listas, access certificate, hoja— sale de las extensiones del
 certificado, y es lo que muestra la columna «Qué es» de `/keys`.
+
+**Las listas sembradas traen anclas inservibles.** El proveedor de ejemplo de
+cada lista tiene un certificado cuya clave privada no existe en ningún sitio. Si
+no lo quitas (`remove-provider`), tus listas declaran confianza en material que
+no puedes emitir, y lo que sí emitas no encadenará con nada.
+
+**Firmar con la clave equivocada produce artefactos que no encadenan.** Un WRPRC
+firmado con el TLSO valida criptográficamente y no llega a `wrprc-lab`, porque el
+TLSO no cuelga de la CA que esa lista publica. La comprobación de §5.7 es la que
+lo detecta; la firma correcta, por sí sola, no dice nada.
 
 **Dos posiciones de revocación compartidas revocan dos RP de golpe.** El alta
 reserva una posición libre precisamente para que eso se detecte cuando no cuesta

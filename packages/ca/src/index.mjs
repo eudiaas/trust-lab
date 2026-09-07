@@ -195,3 +195,85 @@ export function describeKey(certPem) {
     expired: cert.notAfter ? cert.notAfter < new Date() : null,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Firmantes de credenciales y atestaciones
+//
+// Hasta ahora solo habia dos perfiles de hoja con nombre: el firmante de listas
+// (5.7.1) y el access certificate (TS 119 411-8). Todo lo demas —el Document
+// Signer del PID, el que firma los registration certificates, el de la Wallet
+// Instance Attestation y el de la Key Attestation— habia que sacarlo con
+// `mint-leaf` a mano, y en la practica se acababa firmando con el TLSO, que
+// NO encadena con la CA declarada en la lista que corresponde. Una cadena que
+// no llega a la lista no es una cadena.
+//
+// Lo que estas entradas fijan es la ESTRUCTURA y el parentesco, que es lo que
+// hace que la cadena cierre. Donde hay un EKU normativo, va; donde no lo tengo
+// contrastado contra la norma, no se inventa: la confianza en estos artefactos
+// la establece el encadenamiento con el ancla publicada en la lista, no un OID
+// de adorno.
+// ---------------------------------------------------------------------------
+
+/** EKU de Document Signer de mdoc (ISO/IEC 18013-5 Anexo B). */
+export const OID_MDOC_DS = '1.0.18013.5.1.2';
+
+export const SIGNER_ROLES = {
+  'mdoc-ds': {
+    label: 'Document Signer de mdoc',
+    eku: [OID_MDOC_DS],
+    validityDays: 365,
+    lista: 'la lista del emisor (AV TL para AV, LoTE de PID para PID)',
+    nota: 'Firma los MSO. La AV Trusted List lleva el DS, no la IACA.',
+  },
+  'pid-ds': {
+    label: 'Document Signer del PID',
+    eku: [OID_MDOC_DS],
+    validityDays: 365,
+    lista: 'EUPIDProvidersList (pid-lab)',
+    nota: 'Mismo perfil que cualquier DS de mdoc; cambia de quien cuelga.',
+  },
+  wrprc: {
+    label: 'firmante de registration certificates',
+    eku: null,
+    validityDays: 1095,
+    lista: 'EUWRPRCProvidersList (wrprc-lab)',
+    nota:
+      'TS 119 475 no le exige el EKU id-tsl-kp-tslSigning: eso es de TS 119 612 ' +
+      'y solo aplica a quien firma listas. Su cadena va en el x5c del propio JWS.',
+  },
+  wia: {
+    label: 'firmante de Wallet Instance Attestation',
+    eku: null,
+    validityDays: 1095,
+    lista: 'EUWalletProvidersList (wallet-lab)',
+    nota: 'Cuelga del wallet provider, que es el ancla publicada en la lista.',
+  },
+  'key-attestation': {
+    label: 'firmante de Key Attestation',
+    eku: null,
+    validityDays: 1095,
+    lista: 'EUWalletProvidersList (wallet-lab)',
+    nota: 'Puede ser el mismo que el de WIA; se separa por si se quiere rotar aparte.',
+  },
+};
+
+/**
+ * Hoja con uno de los papeles de arriba, firmada por la CA que toca.
+ *
+ * La diferencia con `mintLeaf` no es criptografica, es de intencion declarada:
+ * el rol queda escrito en el certificado (via EKU cuando lo hay) y, sobre todo,
+ * queda escrito de QUIEN cuelga — que es lo que decide si la cadena llega o no
+ * al ancla que publica la lista.
+ */
+export async function mintRoleSigner(crypto, ca, { role, subject, validityDays }) {
+  const spec = SIGNER_ROLES[role];
+  if (!spec) {
+    throw new Error(`rol desconocido: ${role} (usa uno de: ${Object.keys(SIGNER_ROLES).join(', ')})`);
+  }
+  const leaf = await mintLeaf(crypto, ca, {
+    subject,
+    validityDays: validityDays ?? spec.validityDays,
+    extensions: spec.eku ? [new x509.ExtendedKeyUsageExtension(spec.eku, false)] : [],
+  });
+  return { ...leaf, role, spec };
+}

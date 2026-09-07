@@ -7,7 +7,7 @@
 // duplicada en espuni, el vocabulario de la norma copiado a mano): dos copias
 // de una regla acaban divergiendo, y la que diverge en una fabrica de
 // certificados no se nota hasta que una wallet dice que no.
-import { mintCa, mintLeaf, mintTlSigner, assertTlsoProfile } from '../../ca/src/index.mjs';
+import { mintCa, mintLeaf, mintTlSigner, assertTlsoProfile, mintRoleSigner, SIGNER_ROLES } from '../../ca/src/index.mjs';
 import { mintWrpac, assertWrpacProfile } from '../../ca/src/wrpac.mjs';
 import { inMemorySigner } from '../../signer/src/index.mjs';
 import { buildTrustedListXml, signTrustedListXml, assertAnnexB } from '../../tl-xml/src/index.mjs';
@@ -65,6 +65,34 @@ export async function mintKey(store, crypto, { name, subject, issuer }) {
   const { X509Certificate } = await import('@peculiar/x509');
   const ca = { keys: { privateKey: caKey }, cert: new X509Certificate(stored.crt[0]), pem: stored.crt[0] };
   return saveKeyChain(store, crypto, name, await mintLeaf(crypto, ca, { subject }));
+}
+
+/**
+ * Firmante de credenciales o atestaciones: DS del PID, firmante de WRPRC,
+ * de Wallet Instance Attestation o de Key Attestation.
+ *
+ * Siempre cuelga de una CA del almacen. Es el punto: lo que hace util a este
+ * certificado no es su perfil, es que su ancla sea la que publica la lista
+ * correspondiente. Emitirlo sin CA no tendria sentido y por eso no se permite.
+ */
+export async function mintSigner(store, crypto, { name, issuer, role, subject, validityDays }) {
+  const spec = SIGNER_ROLES[role];
+  if (!spec) {
+    throw new OpError(`rol desconocido: ${role}`, [`usa uno de: ${Object.keys(SIGNER_ROLES).join(', ')}`]);
+  }
+  if (!issuer) throw new OpError('un firmante siempre cuelga de una CA: falta el emisor');
+  const stored = await loadKey(store, issuer);
+  const { X509Certificate } = await import('@peculiar/x509');
+  const issuerCert = new X509Certificate(stored.crt[0]);
+  if (!issuerCert.getExtension('2.5.29.19')?.ca) {
+    throw new OpError(`"${issuer}" no es una CA: no puede emitir un firmante`);
+  }
+  const caKey = await crypto.subtle.importKey('jwk', stored.key, P256, true, ['sign']);
+  const ca = { keys: { privateKey: caKey }, cert: issuerCert, pem: stored.crt[0] };
+
+  const material = await mintRoleSigner(crypto, ca, { role, subject, validityDays });
+  await saveKeyChain(store, crypto, name, material);
+  return { name, subject: material.cert.subject, role, issuer, spec };
 }
 
 /** Firmante de listas con el perfil de la clausula 5.7.1, derivado del esquema. */
@@ -171,6 +199,26 @@ export async function checkStatus(store, { id, idx, signerName }) {
   const artifact = await store.artifacts.latest('status', id);
   if (!artifact) throw new OpError(`no hay ninguna status list emitida para "${id}"`);
   return readStatus(artifact.body, stored.crt[0], Number(idx));
+}
+
+/**
+ * Quita una entrada de una lista. NO publica: hay que reemitir.
+ *
+ * Hace falta porque `state/` viene sembrado con un proveedor de ejemplo por
+ * lista, y sus claves privadas no existen en ningun sitio: son anclas que
+ * nadie puede usar. Un despliegue nuevo tiene que sustituirlas por las suyas,
+ * y hasta ahora la unica via era editar el JSON a mano.
+ */
+export async function removeProvider(store, { id, ref }) {
+  const state = await loadDoc(store, id);
+  const list = state.providers ?? [];
+  const idx = /^\d+$/.test(String(ref)) ? Number(ref) : list.findIndex((p) => p.name === ref);
+  if (idx < 0 || idx >= list.length) {
+    throw new OpError(`no hay ninguna entrada "${ref}" en ${id}`, list.map((p, i) => `${i}: ${p.name}`));
+  }
+  const [gone] = list.splice(idx, 1);
+  await store.docs.put(state.kind, id, state);
+  return { id, removed: gone.name, remaining: list.length, pendingPublish: true };
 }
 
 /** Access certificate del RP, derivado del registro (GEN-6.6.1-10). */

@@ -207,7 +207,7 @@ export function rpsPage({ rps, statusLists = [], flash }) {
   });
 }
 
-export function keysPage({ keys, signers, schemes, flash }) {
+export function keysPage({ keys, cas = [], roles = {}, schemes, flash }) {
   const ROLE_PILL = {
     CA: 'dim', 'firmante de listas': 'ok', 'access certificate': 'ok',
     hoja: 'dim', 'sin certificado': 'bad', ilegible: 'bad',
@@ -260,6 +260,29 @@ export function keysPage({ keys, signers, schemes, flash }) {
         <input type="text" name="name" placeholder="nombre" required>
         <select name="scheme">${schemes.map((s) => `<option value="${esc(s.id)}">${esc(s.schemeName ?? s.id)}</option>`).join('')}</select>
         <button class="primary">Emitir TLSO</button>
+      </form>
+    </div>
+    <div class="card">
+      <h3>Firmante de credenciales o atestaciones</h3>
+      <div class="meta">El Document Signer del PID, el que firma los registration certificates
+      y los de Wallet Instance Attestation / Key Attestation. Siempre cuelga de una CA: lo que
+      hace util a este certificado no es su perfil, es que <strong>su ancla sea la que publica
+      la lista</strong> correspondiente.</div>
+      <form method="post" action="/keys/signer">
+        <div class="row">
+          <input type="text" name="name" placeholder="nombre" required>
+          <select name="role">
+            ${Object.entries(roles)
+              .map(([id, r]) => `<option value="${esc(id)}">${esc(r.label)} → ${esc(r.lista)}</option>`)
+              .join('')}
+          </select>
+          <select name="issuer">${cas.map((c) => `<option>${esc(c)}</option>`).join('')}</select>
+        </div>
+        <div class="row" style="margin-top:.5rem">
+          <input type="text" name="subject" placeholder="C=ES, O=Lab PID Provider, CN=Lab PID DS 01"
+                 size="52" required>
+          <button class="primary">Emitir firmante</button>
+        </div>
       </form>
     </div>
     <div class="card">

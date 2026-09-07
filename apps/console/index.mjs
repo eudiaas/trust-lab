@@ -16,8 +16,8 @@ import { cryptoProvider } from '@peculiar/x509';
 import { openStore, seedIfEmpty } from '../../packages/store/src/index.mjs';
 import * as ops from '../../packages/ops/src/index.mjs';
 import { assertRegistry } from '../../packages/registry/src/index.mjs';
-import { describeKey, assertTlsoProfile } from '../../packages/ca/src/index.mjs';
-import { readiness, rpReadiness, tlsoCandidates } from './readiness.mjs';
+import { describeKey, assertTlsoProfile, SIGNER_ROLES } from '../../packages/ca/src/index.mjs';
+import { readiness, rpReadiness, tlsoCandidates, signingCandidates } from './readiness.mjs';
 import * as views from './views.mjs';
 
 const crypto = new Crypto();
@@ -152,7 +152,8 @@ const server = createServer(async (req, res) => {
         });
       }
       const schemes = (await store.docs.list('*')).filter((d) => d.kind === 'etsi-tl-xml');
-      return send(res, 200, views.keysPage({ keys, signers: [], schemes, flash }));
+      const cas = keys.filter((k) => k.ca).map((k) => k.name);
+      return send(res, 200, views.keysPage({ keys, cas, roles: SIGNER_ROLES, schemes, flash }));
     }
 
     if (path === '/rps' && req.method === 'GET') {
@@ -164,7 +165,10 @@ const server = createServer(async (req, res) => {
       const rps = await rpReadiness(store);
       const rp = rps.find((r) => r.id === parts[1]);
       if (!rp) return send(res, 404, 'no existe');
-      const signers = (await tlsoCandidates(store, null)).filter((s) => !s.errors.length).map((s) => s.name);
+      // Firmar un WRPRC no es firmar una lista: no se pide el perfil 5.7.1.
+      const signers = (await signingCandidates(store))
+        .filter((s) => !s.expired)
+        .map((s) => s.name);
       const cas = await store.keys.list();
       return send(res, 200, views.rpPage({ rp, statusLists: [], signers, cas, flash }));
     }
@@ -236,6 +240,15 @@ const server = createServer(async (req, res) => {
       return run(res, '/keys', () =>
         ops.mintTlso(store, crypto, { name: form.get('name'), schemeId: form.get('scheme') }),
         (r) => `Firmante ${r.name} emitido: ${r.subject}`);
+    }
+
+    if (path === '/keys/signer') {
+      return run(res, '/keys', () =>
+        ops.mintSigner(store, crypto, {
+          name: form.get('name')?.trim(), issuer: form.get('issuer'),
+          role: form.get('role'), subject: form.get('subject')?.trim(),
+        }),
+        (r) => `${r.spec.label} ${r.name} emitido bajo ${r.issuer}. Publica ese ancla en ${r.spec.lista}.`);
     }
 
     if (path === '/keys/ca') {

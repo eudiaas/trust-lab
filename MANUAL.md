@@ -110,13 +110,18 @@ ni perfil que sustituya a eso.
 | Quién firma qué | Certificado | Cuelga de | Su ancla se publica en |
 |---|---|---|---|
 | las cinco listas | firmante de listas (TLSO) | nadie (autofirmado) | se **pinea** en el consumidor |
-| las atestaciones de edad | Document Signer de AV | IACA de AV | `av-lab` (AV Trusted List) |
-| el PID | Document Signer del PID | CA del PID provider | `pid-lab` |
-| la Wallet Instance Attestation | firmante de WIA | CA del wallet provider | `wallet-lab` |
-| las Key Attestation | firmante de KA | CA del wallet provider | `wallet-lab` |
-| — (los emite) | access certificate de la RP | CA de acceso | `wrpac-lab` |
-| los registration certificates | firmante de WRPRC | CA del proveedor de WRPRC | `wrprc-lab` |
+| las atestaciones de edad | Document Signer de AV | **IACA de AV** (obligatoria) | `av-lab` (AV Trusted List) |
+| el PID | Document Signer del PID | **CA del PID provider** (obligatoria) | `pid-lab` |
+| la Wallet Instance Attestation | firmante de WIA | CA del wallet provider, *o autofirmado* | `wallet-lab` |
+| las Key Attestation | firmante de KA | CA del wallet provider, *o autofirmado* | `wallet-lab` |
+| — (los emite) | access certificate de la RP | **CA de acceso** (obligatoria) | `wrpac-lab` |
+| los registration certificates | firmante de WRPRC | CA de WRPRC, *o autofirmado* | `wrprc-lab` |
 | — (se revocan) | los WRPRC | — | `status-wrprc` |
+
+Dónde hace falta CA y dónde basta un autofirmado sale de dos reglas
+independientes (§5.2): hace falta cuando algo tiene que **firmar un X.509**
+(`wrpac-lab`) o cuando el **formato de la credencial exige jerarquía** (mdoc:
+`av-lab`, `pid-lab`).
 
 El **firmante de listas es la excepción**: no está en ninguna lista, porque es
 quien las firma. Su certificado se pinea en el otro extremo, y eso es lo que
@@ -187,7 +192,7 @@ va a la lista; la hoja es lo que firma.
 ```bash
 T="node apps/cli/index.mjs"
 
-# AV — la Trusted List lleva el DS, no la IACA
+# AV — la Trusted List lleva el DS, no la IACA; pero la IACA es obligatoria
 $T mint-ca     av-iaca "C=ES, O=Lab AV Attestation Provider, CN=Lab AV IACA"
 $T mint-signer av-iaca av-ds mdoc-ds "C=ES, O=Lab AV Attestation Provider, CN=Lab AV DS 01"
 
@@ -195,13 +200,15 @@ $T mint-signer av-iaca av-ds mdoc-ds "C=ES, O=Lab AV Attestation Provider, CN=La
 $T mint-ca     pid-ca "C=ES, O=Lab PID Provider, CN=Lab PID Issuing CA"
 $T mint-signer pid-ca pid-ds pid-ds "C=ES, O=Lab PID Provider, CN=Lab PID DS 01"
 
-# Wallet provider — WIA y Key Attestation
+# Wallet provider — WIA y Key Attestation (aquí la CA es opcional: ver abajo)
 $T mint-ca     wallet-ca "C=ES, O=Lab Wallet Provider, CN=Lab Wallet Provider CA"
 $T mint-signer wallet-ca wia-signer wia "C=ES, O=Lab Wallet Provider, CN=Lab WIA Signer 01"
 $T mint-signer wallet-ca ka-signer key-attestation "C=ES, O=Lab Wallet Provider, CN=Lab KA Signer 01"
 
-# Acceso y registro de relying parties
+# Acceso: la CA es obligatoria, es quien firma los access certificates
 $T mint-ca     wrpac-ca "C=ES, O=Lab Access CA, CN=Lab WRPAC Issuing CA"
+
+# Registro: aquí la CA también es opcional; con "-" saldría autofirmado
 $T mint-ca     wrprc-ca "C=ES, O=Lab RC Provider, CN=Lab WRPRC Issuing CA"
 $T mint-signer wrprc-ca wrprc-signer wrprc "C=ES, O=Lab RC Provider, CN=Lab WRPRC Signer 01"
 ```
@@ -251,6 +258,40 @@ rechace el certificado.
 > con el TLSO, que **no encadena** con la CA declarada en `wrprc-lab`. Una
 > cadena que no llega a la lista no es una cadena.
 
+### ¿Autofirmado, o colgando de una CA?
+
+Es la decisión que se toma aquí, y **hay tres casos, no dos**. Además, los dos
+«no» lo son por razones **distintas e independientes** — no es una sola regla:
+
+| Lista | ¿Sirve autofirmado? | Por qué |
+|---|---|---|
+| `wrpac-lab` | **No** | La lista publica la **CA emisora** (TS 119 602 anexo F), y un access certificate es un X.509 que alguien tiene que firmar. Hace falta una CA de verdad — autofirmada como raíz, eso sí, pero CA. |
+| `av-lab`, `pid-lab` | **No** | Nada que ver con la lista: la publica el DS y bastaría el certificado suelto. Lo impone el **formato**: ISO/IEC 18013-5 monta el Document Signer bajo una IACA, y un verificador de mdoc que valide la jerarquía rechazaría un autofirmado. Los roles `mdoc-ds` y `pid-ds` lo exigen. |
+| `wallet-lab`, `wrprc-lab` | **Sí** | El ancla publicada **es** ese certificado: no hay cadena que recorrer, así que una jerarquía por encima no añade nada al veredicto. |
+
+Dicho al revés, que es como se decide en la práctica: **una CA hace falta cuando
+algo tiene que firmar un X.509 (`wrpac-lab`) o cuando el formato de la
+credencial exige jerarquía (mdoc)**. En los demás casos es opcional y no aporta.
+
+```bash
+node apps/cli/index.mjs mint-signer - wrprc-solo wrprc "C=ES, O=Lab RC Provider, CN=Firmante"
+```
+
+El `-` en lugar de la CA lo emite autofirmado; con un rol que exige CA, falla y
+dice por qué. En la consola es la opción *«— autofirmado (sin CA) —»* del
+desplegable, y los roles que necesitan CA salen marcados.
+
+⚠ **Lo que NO vale es usar `mint-ca` como firmante.** Produce `CA:TRUE` con
+`KeyUsage` `keyCertSign, cRLSign` y **sin `digitalSignature`**: un verificador
+que mire el `KeyUsage` rechaza la firma. Por eso `mint-signer` sin CA existe, en
+vez de decirte «usa una CA autofirmada».
+
+**Y la razón habitual para poner una CA encima aquí no aplica.** Normalmente se
+pone para poder **rotar** la hoja sin tocar la lista; pero `wallet-lab` y
+`wrprc-lab` publican el firmante, no la CA, así que cada rotación obliga a
+reemitir la lista de todas formas. Autofirmado es la opción simple y no pierdes
+nada.
+
 ### 5.3 Poblar las listas
 
 Cada lista se puebla con el **ancla** de su dominio.
@@ -285,6 +326,9 @@ $T add-entity   wrprc-lab  wrprc-signer  "Lab Registration Certificate Provider"
 
 > El JSON crudo sigue disponible en **Listas → JSON**, para lo que la página de
 > contenido no cubra.
+
+> Qué certificado nombrar en cada lista —y si puede ser autofirmado— está en
+> §5.2, que es donde se emite.
 
 Los dos comandos no son intercambiables:
 
@@ -327,33 +371,6 @@ nombre de la entidad (`TEName`); sin eso, la lista puede decir «Banco X» sobre
 un certificado emitido a otro. Se comprueba al emitir, y con la fuerza que le da
 la norma: **aviso** en los anexos D–G, donde es *should*, y **error** en el
 anexo H, que lo repite como *shall*.
-
-### ¿Autofirmado o colgando de una CA?
-
-Depende solo de qué publica la lista, y ya está en la tabla de arriba:
-
-| | ¿Sirve autofirmado? |
-|---|---|
-| `wrpac-lab` (anexo F) | **No.** La lista publica la CA emisora, y un access certificate es un X.509 que alguien tiene que firmar. Hace falta una CA de verdad — autofirmada como raíz, eso sí. |
-| `av-lab` y `pid-lab` | **No**, por los roles `mdoc-ds`/`pid-ds`: no lo pide TS 119 602 sino ISO/IEC 18013-5, que monta el DS bajo una IACA. La herramienta lo exige. |
-| `wallet-lab` y `wrprc-lab` | **Sí.** El ancla publicada *es* ese certificado, así que no hay cadena que recorrer y una jerarquía por encima no añade nada al veredicto. |
-
-```bash
-node apps/cli/index.mjs mint-signer - wrprc-solo wrprc "C=ES, O=Lab RC Provider, CN=Firmante"
-```
-
-El `-` en lugar de la CA lo emite autofirmado. En la consola es la opción
-*«— autofirmado (sin CA) —»* del desplegable.
-
-⚠ **Lo que NO vale es usar `mint-ca` como firmante.** Produce `CA:TRUE` con
-`KeyUsage` `keyCertSign, cRLSign` y **sin `digitalSignature`**: un verificador
-que mire el `KeyUsage` rechaza la firma. Por eso `mint-signer` sin CA existe, en
-vez de decirte «usa una CA autofirmada».
-
-La razón habitual para poner una CA encima —poder **rotar** la hoja sin tocar la
-lista— **aquí no aplica**: como estas listas publican el firmante y no la CA,
-cada rotación obliga a reemitir la lista de todos modos. Así que para
-`wallet-lab` y `wrprc-lab`, autofirmado es la opción simple y no pierdes nada.
 
 ### 5.4 Firmar y publicar las listas
 
@@ -745,6 +762,11 @@ consumidor que falle cerrado la rechazará. El dashboard marca las vencidas.
 todos los esqueletos nacen con `svc-1`/`use-1`. Los artefactos WRPRC llevan el
 registro delante (`<registro>-<servicio>-<finalidad>`) justamente para que dos
 RP no se pisen el certificado.
+
+**`mint-ca` no sirve como firmante.** Da `CA:TRUE` con `KeyUsage`
+`keyCertSign, cRLSign` y sin `digitalSignature`, así que un verificador que mire
+el `KeyUsage` rechaza la firma. Para un firmante autofirmado, `mint-signer` con
+`-` como emisor; y ojo, no todos los roles lo admiten (§5.2).
 
 **El nombre de una clave no dice lo que es.** Lo pone quien la emite. El rol —CA,
 firmante de listas, access certificate, hoja— sale de las extensiones del

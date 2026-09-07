@@ -81,6 +81,34 @@ async function serveArtifact(req, res, route, id, sequence) {
   });
 }
 
+/** El tipo de artefacto que corresponde a cada tipo de documento. */
+const KIND_OF = { 'etsi-tl-xml': 'lists', 'lote-json': 'lote', 'token-status-list': 'status' };
+
+/**
+ * Tabla de rutas construida desde lo que declara cada documento.
+ *
+ * Esta es la parte que importa: la URL de publicacion viaja DENTRO de lo
+ * firmado — el `sub` de cada status list, el puntero de la AV TL a si misma, el
+ * `status.status_list.uri` de cada WRPRC. Si el publisher sirviera en una ruta
+ * distinta de la declarada, lo firmado apuntaria a un 404 y no se arregla
+ * moviendo el servidor: hay que reemitir. Asi que la ruta no se inventa aqui,
+ * se lee de ahi.
+ */
+async function declaredRoutes() {
+  const table = new Map();
+  for (const doc of await store.docs.list('*')) {
+    const kind = KIND_OF[doc.kind];
+    if (!kind || !doc.url) continue;
+    try {
+      table.set(new URL(doc.url).pathname, { kind, id: doc.id, contentType: ROUTES[kind].contentType });
+    } catch {
+      // Una url mal formada en el estado no debe tumbar el servicio: se ignora
+      // esa ruta y el resto sigue publicandose.
+    }
+  }
+  return table;
+}
+
 const server = createServer(async (req, res) => {
   try {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -97,6 +125,11 @@ const server = createServer(async (req, res) => {
 
     if (parts.length === 0) return serveIndex(res);
     if (parts[0] === 'health') return send(res, 200, 'ok\n', { 'Content-Type': 'text/plain' });
+
+    // Primero, la ruta que el propio documento declara. Es la que conocen las
+    // wallets y la que va dentro de lo firmado.
+    const declared = (await declaredRoutes()).get(url.pathname);
+    if (declared) return serveArtifact(req, res, declared, declared.id);
 
     const route = ROUTES[parts[0]];
     if (!route) return send(res, 404, 'not found\n', { 'Content-Type': 'text/plain' });
@@ -119,20 +152,27 @@ const server = createServer(async (req, res) => {
 async function serveIndex(res) {
   const docs = await store.docs.list('*');
   const published = [];
-  for (const [prefix, route] of Object.entries(ROUTES)) {
-    for (const doc of docs) {
-      const artifact = await store.artifacts.latest(route.kind, doc.id);
-      if (!artifact) continue;
-      published.push({
-        url: `/${prefix}/${doc.id}`,
-        kind: route.kind,
-        id: doc.id,
-        sequence: artifact.sequence,
-        contentType: artifact.contentType ?? route.contentType,
-        nextUpdate: artifact.nextUpdate ?? null,
-        declaredUrl: doc.url ?? null,
-      });
-    }
+  for (const doc of docs) {
+    const kind = KIND_OF[doc.kind];
+    if (!kind) continue;
+    const artifact = await store.artifacts.latest(kind, doc.id);
+    let path = null;
+    try {
+      path = doc.url ? new URL(doc.url).pathname : null;
+    } catch {}
+    published.push({
+      // `path` es donde se sirve de verdad; `canonical` es el atajo por id, que
+      // sigue funcionando y es el que admite versiones historicas.
+      path: path ?? `/${kind}/${doc.id}`,
+      canonical: `/${kind}/${doc.id}`,
+      declaredUrl: doc.url ?? null,
+      kind,
+      id: doc.id,
+      published: artifact
+        ? { sequence: artifact.sequence, nextUpdate: artifact.nextUpdate ?? null,
+            contentType: artifact.contentType ?? ROUTES[kind].contentType }
+        : null,
+    });
   }
   send(res, 200, JSON.stringify({ service: 'trust-lab publisher', readOnly: true, published }, null, 2) + '\n', {
     'Content-Type': 'application/json',

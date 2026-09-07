@@ -267,14 +267,45 @@ $T add-entity   wrprc-lab  wrprc-signer  "Lab Registration Certificate Provider"
 > El JSON crudo sigue disponible en **Listas → JSON**, para lo que la página de
 > contenido no cubra.
 
-Los dos comandos no son intercambiables, y toman cosas distintas:
+Los dos comandos no son intercambiables:
 
-- **`add-provider`** puebla la **AV Trusted List** (XML) y guarda el certificado
-  que le nombras, tal cual. Por eso se le pasa el **DS**: es lo que lleva la AV
-  TL real. Necesita además el código del Estado miembro que notifica al PAAP.
-- **`add-entity`** puebla una **LoTE** (JSON en JWS) y guarda el **ancla de la
-  cadena** —la raíz, no la hoja—, así que da igual si le nombras la CA o algo
-  que cuelgue de ella. Admite una segunda clave para el servicio de revocación.
+- **`add-provider`** puebla la **AV Trusted List** (XML) y necesita además el
+  código del Estado miembro que notifica al PAAP.
+- **`add-entity`** puebla una **LoTE** (JSON en JWS) y admite una segunda clave
+  para el servicio de revocación.
+
+### Qué certificado publica cada lista
+
+TS 119 602 **no habla de anclas, ni de cadenas, ni de CA frente a hoja**: esas
+palabras no aparecen en la norma. Define la identidad digital del servicio
+(cláusula 6.6.3 y anexos D–G) por **función**:
+
+> *"one or more X.509 certificates that can be used to verify the signature or
+> seal created by the provider … on the [access certificate / registration
+> certificate / person identification data] it provides"*
+
+Aplicado a cada anexo, eso da dos respuestas, y solo dos:
+
+| Lista | Lo que se firma | Certificado que se publica |
+|---|---|---|
+| `av-lab` (AV TL) | la atestación de edad | el **Document Signer** |
+| `pid-lab` (anexo D) | el PID | el **certificado firmante** |
+| `wallet-lab` (anexo E) | los componentes del wallet unit | el **certificado firmante** |
+| `wrprc-lab` (anexo G) | el registration certificate (un JWS) | el **certificado firmante** |
+| `wrpac-lab` (anexo F) | el access certificate (un **X.509**) | la **CA emisora** |
+
+El anexo F es el único distinto, y por una razón concreta: lo que firma un
+certificado X.509 es su CA, así que el certificado que verifica esa firma es el
+de la CA. En los otros tres lo que firma es la hoja.
+
+La herramienta aplica esa regla sola —`identityRef` en cada perfil de
+`packages/lote`— así que puedes nombrar la clave que quieras y guarda la que
+toca. La página de contenido lo dice en cada lista.
+
+Una regla más de la cláusula 6.6.3, **SHOULD** y no comprobada aún: el
+`organizationName` del certificado debería coincidir exactamente con el nombre
+de la entidad (`TEName`). En los anexos H e I es **SHALL**; en D–G solo aplica
+la general.
 
 ### 5.4 Firmar y publicar las listas
 

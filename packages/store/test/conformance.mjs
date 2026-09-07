@@ -21,6 +21,12 @@ async function conformance(store, { historial }) {
 
   await store.docs.put('list', 'av-lab', { kind: 'list', sequenceNumber: 1, providers: [] });
   eq('docs: leer lo escrito', (await store.docs.get('list', 'av-lab')).sequenceNumber, 1);
+  // `get` y `list` tienen que dar la MISMA forma. Cuando no la daban, el `id`
+  // aparecia solo en el almacen de fichero —porque los ficheros sembrados lo
+  // llevan escrito dentro— y la consola construia enlaces con `undefined` en
+  // cuanto se desplegaba contra Postgres.
+  eq('docs: get devuelve el id', (await store.docs.get('list', 'av-lab')).id, 'av-lab');
+  eq('docs: get con comodin devuelve el id', (await store.docs.get('*', 'av-lab')).id, 'av-lab');
   await store.docs.put('list', 'av-lab', { kind: 'list', sequenceNumber: 2, providers: [] });
   eq('docs: sobrescribir', (await store.docs.get('list', 'av-lab')).sequenceNumber, 2);
   check('docs: inexistente da null', (await store.docs.get('list', 'no-existe')) === null);

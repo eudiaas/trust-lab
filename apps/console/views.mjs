@@ -584,7 +584,7 @@ export function resetPage({ preview, flash }) {
  * lo mirara. Aqui la pregunta es la correcta —QUE contiene esta lista— y se
  * responde de una vez, marcando sobre lo que hay en el almacen.
  */
-export function listMembersPage({ item, doc, esAv, candidatos, huerfanos, keys, flash }) {
+export function listMembersPage({ id, item, doc, esAv, identityHelp, candidatos, huerfanos, keys, flash }) {
   const row = (c) => {
     const check = `<input type="checkbox" name="sel" value="key:${esc(c.keyName)}"
       id="c-${esc(c.keyName)}" ${c.dentro ? 'checked' : ''}>`;
@@ -622,9 +622,9 @@ export function listMembersPage({ item, doc, esAv, candidatos, huerfanos, keys, 
     .join('');
 
   return layout({
-    title: item?.title ?? doc.id,
+    title: item?.title ?? id,
     path: '/lists', flash,
-    body: `<h1>${esc(item?.title ?? doc.id)}</h1>
+    body: `<h1>${esc(item?.title ?? id)}</h1>
     <p class="lead">${esc(item?.type ?? doc.kind)} · <span class="mono">${esc(doc.url ?? '')}</span></p>
 
     ${
@@ -637,14 +637,10 @@ export function listMembersPage({ item, doc, esAv, candidatos, huerfanos, keys, 
         : ''
     }
 
-    <form method="post" action="/lists/${encodeURIComponent(doc.id)}/providers">
+    <form method="post" action="/lists/${encodeURIComponent(id)}/providers">
       <div class="card">
         <h3>Que contiene esta lista</h3>
-        <div class="meta">Marca lo que debe publicar. ${
-          esAv
-            ? 'Una AV Trusted List publica el <strong>Document Signer</strong>, no la IACA, y cada entrada necesita el Estado miembro que la notifica.'
-            : 'Una LoTE publica el <strong>ancla de la cadena</strong>: da igual que marques la CA o una hoja que cuelgue de ella, se guarda la raiz.'
-        }</div>
+        <div class="meta">Marca lo que debe publicar. ${esc(identityHelp ?? '')}</div>
         <table><tr><th></th><th>Clave</th><th>Subject</th><th>Nombre publicado</th>
           <th>${esAv ? 'EM' : 'Revocacion'}</th></tr>
           ${huerfanoRows}${candidatos.map(row).join('')}
@@ -666,12 +662,12 @@ export function listMembersPage({ item, doc, esAv, candidatos, huerfanos, keys, 
       ${
         item?.blockers?.length
           ? `<ul class="blockers">${item.blockers.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>`
-          : `<form class="inline" method="post" action="/lists/${encodeURIComponent(doc.id)}/build">
+          : `<form class="inline" method="post" action="/lists/${encodeURIComponent(id)}/build">
                <select name="signer">${(item?.signers ?? []).map((x) => `<option>${esc(x)}</option>`).join('')}</select>
                <button class="primary">Emitir y publicar</button></form>`
       }
     </div>
-    <p><a href="/docs/${encodeURIComponent(doc.id)}">Editar el documento entero</a> ·
+    <p><a href="/docs/${encodeURIComponent(id)}">Editar el documento entero</a> ·
     <a href="/lists">Volver</a></p>`,
   });
 }

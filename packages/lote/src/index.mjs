@@ -39,28 +39,55 @@ export const SVC = {
  * único tipo de servicio de sus listas gestionadas, así que se conserva por
  * interoperabilidad — marcado, no escondido.
  */
+/**
+ * Que certificado va en el `ServiceDigitalIdentity` de cada perfil.
+ *
+ * TS 119 602 no habla de anclas, ni de cadenas, ni de CA frente a hoja: esas
+ * palabras no aparecen en la norma. Define la identidad digital por FUNCION
+ * (clause 6.6.3 y anexos D-G): "one or more X.509 certificates that can be used
+ * to verify the signature or seal created by the provider on [lo que emite]".
+ *
+ * Aplicado a cada anexo, eso da dos respuestas distintas:
+ *
+ * - `signing` — lo que verifica la firma es el certificado que FIRMA. Anexo D
+ *   (el PID lo sella el Document Signer del proveedor), anexo E (los
+ *   componentes del wallet unit los firma el wallet provider) y anexo G (el
+ *   registration certificate es un JWS firmado por su emisor). Es tambien lo
+ *   que hace la AV Trusted List, que publica el DS y no la IACA.
+ * - `issuing-ca` — anexo F: lo que se verifica es la firma "on the access
+ *   certificate", y un certificado X.509 lo firma su CA emisora. Ahi el
+ *   certificado que hace falta es el de la CA.
+ *
+ * El campo `identityRef` de cada perfil dice cual, y de ahi sale que
+ * certificado se guarda al anadir una entidad. Antes se guardaba SIEMPRE la
+ * raiz de la cadena, que solo es correcto para el anexo F.
+ */
 export const LIST_PROFILES = {
   [LoTEProfile.EUPIDProvidersList]: {
     loteType: 'http://uri.etsi.org/19602/LoTEType/EUPIDProvidersList',
     svc: SVC.PID,
+    identityRef: 'signing', // anexo D: verifica el sello del proveedor sobre el PID
     statusDeterminationApproach: 'http://uri.etsi.org/19602/PIDProvidersList/StatusDetn/EU',
     schemeTypeCommunityRules: 'http://uri.etsi.org/19602/PIDProviders/schemerules/EU',
   },
   [LoTEProfile.EUWalletProvidersList]: {
     loteType: 'http://uri.etsi.org/19602/LoTEType/EUWalletProvidersList',
     svc: SVC.WalletSolution,
+    identityRef: 'signing', // anexo E: autentica los componentes del wallet unit
     statusDeterminationApproach: 'http://uri.etsi.org/19602/WalletProvidersList/StatusDetn/EU',
     schemeTypeCommunityRules: 'http://uri.etsi.org/19602/WalletProvidersList/schemerules/EU',
   },
   [LoTEProfile.EUWRPACProvidersList]: {
     loteType: 'http://uri.etsi.org/19602/LoTEType/EUWRPACProvidersList',
     svc: SVC.WRPAC,
+    identityRef: 'issuing-ca', // anexo F: verifica la firma SOBRE el access certificate
     statusDeterminationApproach: 'http://uri.etsi.org/19602/WRPACProvidersList/StatusDetn/EU',
     schemeTypeCommunityRules: 'http://uri.etsi.org/19602/WRPACProvidersList/schemerules/EU',
   },
   [LoTEProfile.EUWRPRCProvidersList]: {
     loteType: 'http://uri.etsi.org/19602/LoTEType/EUWRPRCProvidersList',
     svc: SVC.WRPRC,
+    identityRef: 'signing', // anexo G: verifica la firma del JWS del registration certificate
     // Sí, "WRPRCrovidersList": la errata está en la propia norma (le falta la
     // P). Se reproduce tal cual — un consumidor que la compare por igualdad
     // esperará la URI publicada, no la que nosotros creamos correcta.
@@ -70,6 +97,7 @@ export const LIST_PROFILES = {
   [LoTEProfile.EUPubEAAProvidersList]: {
     loteType: 'http://uri.etsi.org/19602/LoTEType/EUPubEAAProvidersList',
     svc: SVC.PubEAA,
+    identityRef: 'signing', // anexo H
     statusDeterminationApproach: 'http://uri.etsi.org/19602/PubEAAProvidersList/StatusDetn/EU',
     schemeTypeCommunityRules: 'http://uri.etsi.org/19602/PubEAAProvidersList/schemerules/EU',
     serviceStatuses: [

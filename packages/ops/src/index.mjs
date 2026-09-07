@@ -625,6 +625,20 @@ export async function reset(store, { scope = 'publicado', confirm, root } = {}) 
 // ---------------------------------------------------------------------------
 
 /**
+ * Que certificado del par clave+cadena publica una lista.
+ *
+ * Sale del perfil, no de una regla fija: TS 119 602 pide "el certificado que
+ * verifica la firma que crea el proveedor", y eso es la hoja que firma en tres
+ * de los cuatro anexos y la CA emisora en el de access certificates (anexo F,
+ * donde lo que se firma es un X.509). Ver la nota en `packages/lote`.
+ */
+export function identityCertOf(doc, state) {
+  if (state.kind === 'etsi-tl-xml') return doc.crt?.[0] ?? null;   // la AV TL publica el DS
+  const ref = LIST_PROFILES[state.loteType]?.identityRef ?? 'signing';
+  return (ref === 'issuing-ca' ? doc.crt?.at(-1) : doc.crt?.[0]) ?? null;
+}
+
+/**
  * Candidatos a entrar en una lista, con lo que hace falta para decidir:
  * que son, si su clave privada esta aqui, y si ya estan dentro.
  */
@@ -633,11 +647,11 @@ export async function listCandidates(store, id) {
   const { fingerprint } = await import('../../graph/src/index.mjs');
   const { describeKey } = await import('../../ca/src/index.mjs');
   const esAv = state.kind === 'etsi-tl-xml';
+  const refCa = LIST_PROFILES[state.loteType]?.identityRef === 'issuing-ca';
 
-  // Una lista AV publica el certificado que se le nombra (el Document Signer);
-  // una LoTE publica el ancla de la cadena. La huella con la que se compara
-  // "ya esta dentro" tiene que ser la misma que se guardaria al anadirlo.
-  const certOf = (doc) => (esAv ? doc.crt?.[0] : doc.crt?.at(-1));
+  // La huella con la que se compara "ya esta dentro" tiene que ser la del
+  // certificado que se guardaria al anadirlo, y cual es eso lo decide el perfil.
+  const certOf = (doc) => identityCertOf(doc, state);
 
   const dentro = new Map();
   for (const p of state.providers ?? []) {
@@ -668,11 +682,11 @@ export async function listCandidates(store, id) {
       tambien: [],
     };
 
-    // Una LoTE publica el ancla, asi que varias claves del almacen —la CA y
-    // todo lo que cuelga de ella— acaban en la MISMA entrada. Ofrecerlas como
-    // filas separadas hacia que marcar una dejase la otra marcada tambien, que
-    // parece un fallo y en realidad es una sola entrada vista dos veces.
-    const previa = porHuella.get(fp);
+    // Cuando la lista publica la CA emisora (anexo F), varias claves del
+    // almacen —la CA y todo lo que cuelga de ella— acaban en la MISMA entrada,
+    // asi que se agrupan. En las listas que publican el certificado firmante
+    // cada clave es una entrada propia y no hay nada que agrupar.
+    const previa = refCa ? porHuella.get(fp) : null;
     if (!previa) {
       porHuella.set(fp, fila);
       continue;
@@ -696,7 +710,15 @@ export async function listCandidates(store, id) {
     huerfanos.push({ fingerprint: fp, displayName: p.name, dentro: true, sinClave: true });
   }
 
-  return { id, kind: state.kind, esAv, candidatos, huerfanos, entradas: (state.providers ?? []).length };
+  return {
+    id, kind: state.kind, esAv, candidatos, huerfanos,
+    entradas: (state.providers ?? []).length,
+    identityHelp: esAv
+      ? 'Una AV Trusted List publica el Document Signer, no la IACA, y cada entrada necesita el Estado miembro que la notifica.'
+      : refCa
+        ? 'TS 119 602 anexo F: esta lista publica el certificado que verifica la firma SOBRE el access certificate, es decir la CA emisora. Marca la CA, o una hoja que cuelgue de ella y se guardara su CA.'
+        : 'TS 119 602: esta lista publica el certificado que verifica la firma que crea el proveedor, es decir el que FIRMA. Marca el certificado firmante, no su CA.',
+  };
 }
 
 const derivarNombre = (subject) => {
@@ -754,8 +776,8 @@ export async function setProviders(store, { id, seleccion = [] }) {
       const revocacion = sel.revocationKeyName ? await raw.get(sel.revocationKeyName) : null;
       providers.push({
         name,
-        issuanceCertPem: doc.crt.at(-1),
-        ...(revocacion?.crt?.length ? { revocationCertPem: revocacion.crt.at(-1) } : {}),
+        issuanceCertPem: identityCertOf(doc, state),
+        ...(revocacion?.crt?.length ? { revocationCertPem: identityCertOf(revocacion, state) } : {}),
       });
     }
   }

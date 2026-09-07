@@ -11,8 +11,14 @@ export function memoryStore() {
     kind: 'memory',
     docs: {
       async get(kind, id) {
-        if (kind !== '*') return docs.get(k(kind, id)) ?? null;
-        for (const [key, doc] of docs) if (key.split('\u0000')[1] === id) return doc;
+        // El `id` va SIEMPRE en lo devuelto, como en `list`. Sin esto, `get` y
+        // `list` daban formas distintas del mismo documento segun el adaptador,
+        // y quien llamaba se acostumbraba a la del almacen que tuviera delante.
+        if (kind !== '*') {
+          const doc = docs.get(k(kind, id));
+          return doc ? { id, ...doc } : null;
+        }
+        for (const [key, doc] of docs) if (key.split('\u0000')[1] === id) return { id, ...doc };
         return null;
       },
       async put(kind, id, doc) {

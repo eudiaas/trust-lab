@@ -199,7 +199,7 @@ const server = createServer(async (req, res) => {
       if (!doc) return send(res, 404, 'no existe');
       const item = (await readiness(store)).find((i) => i.id === parts[1]);
       return send(res, 200, views.listMembersPage({
-        item, doc, ...(await ops.listCandidates(store, parts[1])),
+        id: parts[1], item, doc, ...(await ops.listCandidates(store, parts[1])),
         keys: await store.keys.list(), flash,
       }));
     }

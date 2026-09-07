@@ -70,7 +70,8 @@ export function sqlStore({ query, schema = SCHEMA_SQL, close }) {
           kind === '*'
             ? await q('SELECT doc FROM docs WHERE id = $1', [id])
             : await q('SELECT doc FROM docs WHERE kind = $1 AND id = $2', [kind, id]);
-        return r.rows[0]?.doc ?? null;
+        const doc = r.rows[0]?.doc;
+        return doc ? { id, ...doc } : null;
       },
       async put(kind, id, doc) {
         await q(

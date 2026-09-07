@@ -96,10 +96,12 @@ const cmds = {
     const state = await store.docs.get('*', docId(stateId));
     const issuance = await store.keys.get(issuanceKey);
     const revocation = revocationKey ? await store.keys.get(revocationKey) : null;
+    // Cual de los certificados del par se publica lo decide el perfil de la
+    // lista (TS 119 602, anexos D-G), no una regla fija.
     state.providers.push({
       name: displayName,
-      issuanceCertPem: issuance.crt.at(-1),   // el ancla: la raiz, no la hoja
-      ...(revocation ? { revocationCertPem: revocation.crt.at(-1) } : {}),
+      issuanceCertPem: ops.identityCertOf(issuance, state),
+      ...(revocation ? { revocationCertPem: ops.identityCertOf(revocation, state) } : {}),
     });
     await store.docs.put(state.kind, docId(stateId), state);
     console.log(`anadido ${displayName} a ${stateId} (${state.providers.length} en total)`);

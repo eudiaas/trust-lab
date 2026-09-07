@@ -31,7 +31,10 @@ export function fileStore({ root, artifactExt = EXT } = {}) {
   return {
     kind: 'file',
     docs: {
-      get: (_kind, id) => readJson(statePath(id)),
+      async get(_kind, id) {
+        const doc = await readJson(statePath(id));
+        return doc ? { id, ...doc } : null;
+      },
       async put(_kind, id, doc) {
         await writeFileEnsuring(statePath(id), JSON.stringify(doc, null, 2) + '\n');
         return doc;

@@ -123,8 +123,16 @@ independientes (§5.2): hace falta cuando algo tiene que **firmar un X.509**
 (`wrpac-lab`) o cuando el **formato de la credencial exige jerarquía** (mdoc:
 `av-lab`, `pid-lab`).
 
-El **firmante de listas es la excepción**: no está en ninguna lista, porque es
-quien las firma. Su certificado se pinea en el otro extremo, y eso es lo que
+**La sexta no es una lista de confianza.** Las cinco primeras dicen *en quién se
+confía*; `status-wrprc` dice de qué se ha **dejado** de confiar. Existe porque
+cada registration certificate lleva dentro una posición suya
+(`status.status_list = { idx, uri }`, TS 119 475), así que sin ella «certificado
+de registro revocado» sería una frase y no algo comprobable. Se emite y publica
+igual que las demás —de ahí que comparta pantallas— pero su contenido no son
+certificados sino posiciones, y se edita en **Revocación** (§5.8).
+
+El **firmante de listas es la otra excepción**: no está en ninguna lista, porque
+es quien las firma. Su certificado se pinea en el otro extremo, y eso es lo que
 convierte a las listas en evidencia. Es también el único ancla del laboratorio
 que hay que instalar a mano en la wallet.
 

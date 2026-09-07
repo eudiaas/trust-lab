@@ -281,6 +281,16 @@ export async function issueWrprc(store, crypto, { registryId, serviceId, useId, 
   const bad = assertWrprc(payload);
   if (bad.length) throw new OpError('el payload no valida contra TS 119 475', bad);
 
+  // Emitir contra una posicion revocada es legitimo tecnicamente y casi nunca
+  // es lo que se queria: el certificado sale valido y cualquier consumidor que
+  // mire el estado lo rechaza. Se avisa en vez de bloquear, porque reemitir
+  // tras levantar la revocacion es un flujo real.
+  const sl2 = await loadDoc(store, sl?.listId).catch(() => null);
+  const estado = sl2?.entries?.[String(idx)]?.status;
+  const avisos = estado && estado !== 'valid'
+    ? [`la posicion ${idx} de ${sl.listId} esta "${estado}": este WRPRC nace revocado`]
+    : [];
+
   const jwt = await signWrprcCompact(payload, signer, signerName);
   // El id lleva el registro delante: TS5 no exige que `serviceIdentifier` sea
   // unico entre relying parties, asi que dos RP con el mismo par
@@ -298,7 +308,7 @@ export async function issueWrprc(store, crypto, { registryId, serviceId, useId, 
     subject: payload.sub_ln ?? payload.name,
     entitlements: payload.entitlements.length,
     edition: detectEdition(back.header ?? {}, back.payload ?? back),
-    statusUri: sl?.uri, statusIndex: idx,
+    statusUri: sl?.uri, statusIndex: idx, avisos,
     dropped: droppedByEdition(registry),
   };
 }
@@ -379,6 +389,14 @@ async function takenIndexes(store, listId) {
   for (const doc of await store.docs.list('*')) {
     if (!doc.walletRelyingParty || doc.statusList?.listId !== listId) continue;
     for (const idx of Object.values(doc.statusList.indexByIntendedUse ?? {})) taken.add(Number(idx));
+  }
+  // Una posicion revocada tampoco esta libre, aunque nadie la reclame ya. Si se
+  // reutiliza, el certificado que la reciba nace revocado — y no se nota al
+  // emitirlo, sino cuando alguien lo valida. Pasa en cuanto se borra un RP
+  // cuya posicion estaba marcada.
+  const lista = await store.docs.get('*', listId).catch(() => null);
+  for (const [idx, e] of Object.entries(lista?.entries ?? {})) {
+    if (e?.status && e.status !== 'valid') taken.add(Number(idx));
   }
   return taken;
 }

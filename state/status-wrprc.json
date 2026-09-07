@@ -6,16 +6,6 @@
   "size": 1024,
   "expiresInDays": 30,
   "sequenceNumber": 3,
-  "entries": {
-    "7": {
-      "status": "invalid",
-      "note": "intended use retirado por el RP",
-      "changedAt": "2026-09-07T13:51:30.975Z"
-    },
-    "11": {
-      "status": "invalid",
-      "note": "prueba desde la consola",
-      "changedAt": "2026-09-07T14:32:43.151Z"
-    }
-  }
+  "entries": {},
+  "_entries": "Vacia a proposito: un laboratorio recien montado no tiene nada revocado. Las posiciones se marcan desde /status, y la lista hay que reemitirla para que salga."
 }

@@ -1,0 +1,87 @@
+{
+  "_model": "TS5 (Common formats and API for RP Registration information) + TS6 (Common set of RP information to be registered).",
+  "walletRelyingParty": {
+    "legalName": "Nueva SL",
+    "identifier": [
+      {
+        "type": "http://data.europa.eu/eudi/id/VATIN",
+        "value": "B22222222",
+        "country": "ES",
+        "primary": true
+      }
+    ],
+    "infoURI": "https://trust-lab.espuni.com/rp/VATES-B22222222",
+    "isPSB": false,
+    "registryURI": "https://trust-lab.espuni.com/registry/es/VATES-B22222222",
+    "supervisoryAuthority": {
+      "name": "PENDIENTE — autoridad de control competente",
+      "country": "ES",
+      "formURI": [
+        "https://trust-lab.espuni.com/pendiente"
+      ]
+    },
+    "services": [
+      {
+        "serviceTradeName": "Nueva SL",
+        "serviceIdentifier": "svc-1",
+        "supportURI": "https://trust-lab.espuni.com/pendiente",
+        "srvDescription": [
+          {
+            "lang": "en",
+            "content": "PENDIENTE — description of the service"
+          }
+        ],
+        "entitlements": [
+          "https://uri.etsi.org/19475/Entitlement/Service_Provider"
+        ],
+        "isIntermediary": false,
+        "intendedUses": [
+          {
+            "intendedUseIdentifier": "use-1",
+            "createdAt": "2026-09-07",
+            "purpose": [
+              {
+                "lang": "en",
+                "content": "PENDIENTE — purpose of the data request"
+              }
+            ],
+            "privacyPolicy": [
+              {
+                "uri": "https://trust-lab.espuni.com/pendiente",
+                "type": "PrivacyStatement"
+              }
+            ],
+            "credentials": [
+              {
+                "format": "mso_mdoc",
+                "meta": {
+                  "doctype_value": "eu.europa.ec.av.1"
+                },
+                "claims": [
+                  {
+                    "path": [
+                      "eu.europa.ec.av.1",
+                      "age_over_18"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "wrpac": {
+    "policy": "NCP-l-eudiwrp",
+    "cpsUri": "https://trust-lab.espuni.com/cps",
+    "validityDays": 365
+  },
+  "statusList": {
+    "listId": "status-wrprc",
+    "uri": "https://trust-lab.espuni.com/status/wrprc",
+    "indexByIntendedUse": {
+      "use-1": 1
+    }
+  }
+}

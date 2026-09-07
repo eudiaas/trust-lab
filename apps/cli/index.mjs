@@ -154,6 +154,7 @@ const cmds = {
     console.log(`  sujeto ${r.subject} · ${r.entitlements} entitlement(s)`);
     console.log(`  edicion detectada al releerlo: ${r.edition}`);
     if (r.statusIndex !== undefined) console.log(`  revocable en ${r.statusUri} posicion ${r.statusIndex}`);
+    for (const a of r.avisos ?? []) console.log(`  ⚠ ${a}`);
     for (const d of r.dropped) console.log(`  ⚠ no viaja en el certificado: ${d}`);
   },
 

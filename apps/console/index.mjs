@@ -413,7 +413,8 @@ const server = createServer(async (req, res) => {
           registryId: parts[1], serviceId: form.get('service'),
           useId: form.get('use'), signerName: form.get('signer'),
         }),
-        (r) => `WRPRC ${r.id} emitido (edicion ${r.edition})`);
+        (r) => `WRPRC ${r.id} emitido (edicion ${r.edition})` +
+          (r.avisos?.length ? `\n⚠ ${r.avisos.join('\n⚠ ')}` : ''));
     }
 
     if (parts[0] === 'docs' && parts.length === 2) {

@@ -512,7 +512,14 @@ $T status-check status-wrprc 0 tl-signer   # → invalid
 > Consola: **Revocación**.
 
 Cambiar una posición **no publica nada**: hay que reemitir la lista para que el
-cambio salga. La lista se reserva entera de golpe (1024 posiciones) en vez de
+cambio salga.
+
+**Una posición revocada no se reutiliza.** El alta de una RP la salta al
+reservar, igual que salta las que ya tiene otro registro: si se reciclara, el
+certificado que la reciba **nace revocado**, y eso no se nota al emitirlo sino
+cuando alguien lo valida. Pasa en cuanto se borra una RP cuya posición estaba
+marcada. Y si emites contra una posición revocada a propósito —reemitir tras
+levantar una revocación es un flujo real— se avisa en vez de bloquear. La lista se reserva entera de golpe (1024 posiciones) en vez de
 crecer con cada revocación, porque una lista que crece filtra cuántos
 certificados hay vivos.
 

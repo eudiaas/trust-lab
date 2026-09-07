@@ -53,6 +53,7 @@ camino ZK. Si pasa aquí, la aceptan los dos.
 | Certificado del TLSO conforme a la cláusula 5.7.1 | ✅ `mintTlSigner` + `assertTlsoProfile` |
 | Perfil **AV Trusted List** de la Comisión (tablas I.1–I.3) | ✅ `packages/tl-xml/src/av-profile.mjs` |
 | Listas LoTE: PID · Wallet · **WRPAC (Access CAs)** · **WRPRC** · PubEAA | ✅ `packages/lote` — TS 119 602 v1.1.1 |
+| **Access certificates de RP (WRPAC)** | ✅ `packages/ca/src/wrpac.mjs` — TS 119 411-8 v1.1.1 |
 | Registration certificates (WRPRC) | ⬜ sobre `@owf/eudi-wrprc` (v1.2.1) |
 | Status lists (revocación) | ⬜ sobre `@owf/token-status-list` |
 | Firma de CSR | ⬜ solo si hace falta dar certs a terceros sin exportar claves |
@@ -92,6 +93,11 @@ Dos comprobaciones corren en cada `build-list` y **abortan la emisión** si fall
   `TSPInformationURI` con el código del EM de cada PAAP, y que el estado del
   servicio sea sólo `recognized` o `deprecated`.
 
+- `assertWrpacProfile(cert)` — cláusula 6.6.1 de TS 119 411-8: política del
+  arco `0.4.0.194118.1.*`, `organizationIdentifier` en el subject DN,
+  qualifier `cpsURI` y contacto del RP en el SAN. Los tres requisitos
+  obligatorios se comprueban además **antes** de emitir, así que un spec
+  incompleto no llega a producir certificado.
 - `assertLote(lote, state)` — validez estructural según `@owf/eudi-lote`, más
   la coherencia entre el tipo de lista y los tipos de servicio de sus entidades.
   Y cada `build-lote` **se verifica a sí mismo**: comprueba la firma del JWS

@@ -7,6 +7,7 @@ import { Crypto } from '@peculiar/webcrypto';
 import { cryptoProvider } from '@peculiar/x509';
 import { TrustedListProfiles, loadTrustedList, getTrustAnchors } from '@owf/eudi-tl';
 import { mintCa, mintLeaf, mintTlSigner, assertTlsoProfile } from '../../packages/ca/src/index.mjs';
+import { mintWrpac, assertWrpacProfile, WRPAC_POLICY } from '../../packages/ca/src/wrpac.mjs';
 import { inMemorySigner } from '../../packages/signer/src/index.mjs';
 import { buildTrustedListXml, signTrustedListXml, assertAnnexB } from '../../packages/tl-xml/src/index.mjs';
 import { AV_TL_PROFILE, assertAvProfile } from '../../packages/tl-xml/src/av-profile.mjs';
@@ -90,6 +91,28 @@ const cmds = {
     });
     await writeJson(statePath, state);
     console.log(`añadido ${displayName} a ${stateId} (${state.providers.length} en total)`);
+  },
+
+  // trustlab mint-wrpac <nombre-ca> <nombre> <fichero-json-con-los-datos-del-RP>
+  //   Access certificate de relying party con el perfil de TS 119 411-8.
+  async 'mint-wrpac'([caName, name, specPath]) {
+    const spec = await readJson(specPath);
+    const stored = await readJson(join(ROOT, `out/keys/${caName}.json`));
+    const caKey = await crypto.subtle.importKey('jwk', stored.key,
+      { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']);
+    const { X509Certificate } = await import('@peculiar/x509');
+    const ca = { keys: { privateKey: caKey }, cert: new X509Certificate(stored.crt[0]), pem: stored.crt[0] };
+
+    const wrpac = await mintWrpac(crypto, ca, spec);
+    const problems = assertWrpacProfile(wrpac.pem);
+    if (problems.length) {
+      console.error('el certificado no cumple el perfil de TS 119 411-8:');
+      for (const p of problems) console.error('  · ' + p);
+      process.exit(1);
+    }
+    await exportKeyChain(name, wrpac);
+    console.log(`WRPAC ${name}: ${wrpac.cert.subject}`);
+    console.log(`  política ${wrpac.policy} (${wrpac.policyOid}) · perfil 6.6.1 · OK`);
   },
 
   // trustlab add-entity <estado> <nombre-clave-emisión> "<nombre visible>" [nombre-clave-revocación]
@@ -211,4 +234,11 @@ if (!cmds[cmd]) {
   console.error(`uso: trustlab <${Object.keys(cmds).join('|')}> ...`);
   process.exit(1);
 }
-await cmds[cmd](args);
+try {
+  await cmds[cmd](args);
+} catch (err) {
+  // Un incumplimiento de perfil es un resultado esperado del CLI, no un fallo
+  // del programa: se cuenta, no se vuelca la pila.
+  console.error(`error: ${err.message}`);
+  process.exit(1);
+}

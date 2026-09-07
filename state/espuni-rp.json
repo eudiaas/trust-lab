@@ -1,13 +1,42 @@
 {
-  "country": "ES",
-  "organization": "espuni",
-  "commonName": "espuni age verification",
-  "organizationIdentifier": "VATES-B12345678",
-  "policy": "NCP-l-eudiwrp",
-  "cpsUri": "https://trust-lab.espuni.com/cps",
-  "contact": {
-    "uri": "https://espuni.com/support",
-    "email": "soporte@espuni.com"
+  "_comment": "Registro de una relying party. GEN-6.6.1-10 de TS 119 411-8: los atributos del access certificate se derivan de la información del registro (TS 119 475 §5.1.2), así que WRPAC y WRPRC salen de este mismo fichero y no pueden derivar.",
+
+  "identity": {
+    "country": "ES",
+    "legalName": "espuni S.L.",
+    "tradeName": "espuni",
+    "organizationIdentifier": "VATES-B12345678",
+    "registryUri": "https://trust-lab.espuni.com/registry/es/VATES-B12345678"
   },
-  "validityDays": 365
+
+  "supervisoryAuthority": {
+    "name": "Agencia Espanola de Proteccion de Datos",
+    "country": "ES",
+    "email": "internacional@aepd.es"
+  },
+
+  "wrpac": {
+    "commonName": "espuni age verification",
+    "policy": "NCP-l-eudiwrp",
+    "cpsUri": "https://trust-lab.espuni.com/cps",
+    "contact": { "uri": "https://espuni.com/support", "email": "soporte@espuni.com" },
+    "validityDays": 365
+  },
+
+  "useCases": [
+    {
+      "id": "age-verification",
+      "serviceDescription": "Age verification for online services under Article 28 of the Digital Services Act",
+      "purpose": "Confirm that the user is over 18 before granting access to age-restricted content",
+      "privacyPolicy": "https://espuni.com/privacy",
+      "entitlements": ["SERVICE_PROVIDER"],
+      "credentials": [
+        {
+          "format": "mso_mdoc",
+          "doctype": "eu.europa.ec.av.1",
+          "claims": [["eu.europa.ec.av.1", "age_over_18"]]
+        }
+      ]
+    }
+  ]
 }

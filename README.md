@@ -54,7 +54,7 @@ camino ZK. Si pasa aquí, la aceptan los dos.
 | Perfil **AV Trusted List** de la Comisión (tablas I.1–I.3) | ✅ `packages/tl-xml/src/av-profile.mjs` |
 | Listas LoTE: PID · Wallet · **WRPAC (Access CAs)** · **WRPRC** · PubEAA | ✅ `packages/lote` — TS 119 602 v1.1.1 |
 | **Access certificates de RP (WRPAC)** | ✅ `packages/ca/src/wrpac.mjs` — TS 119 411-8 v1.1.1 |
-| Registration certificates (WRPRC) | ⬜ sobre `@owf/eudi-wrprc` (v1.2.1) |
+| **Registration certificates (WRPRC)** | ✅ `packages/wrprc` — TS 119 475 v1.2.1, con detector de edición |
 | Status lists (revocación) | ⬜ sobre `@owf/token-status-list` |
 | Firma de CSR | ⬜ solo si hace falta dar certs a terceros sin exportar claves |
 
@@ -120,6 +120,40 @@ salvo quien pinea nuestro firmante a mano.
 
 Si prefieres lo contrario, `allowDivergence: true` en el estado degrada las
 comprobaciones del perfil AV a avisos.
+
+## Un registro, dos certificados
+
+`state/<rp>.json` es **el registro de la relying party**, y de él salen sus dos
+certificados. No es orden: GEN-6.6.1-10 de TS 119 411-8 dice que los atributos
+del access certificate *"shall be derived from the information held in the
+register as specified in clause 5.1.2 of ETSI TS 119 475"*. Dos ficheros
+separados podrían derivar; uno solo, no.
+
+```bash
+node apps/cli/index.mjs mint-wrpac   wrpac-issuing-ca espuni-access state/espuni-rp.json
+node apps/cli/index.mjs issue-wrprc  state/espuni-rp.json age-verification tl-signer
+```
+
+Un WRPRC = **un caso de uso** (cardinalidad 1:1 de la norma), así que
+`useCases[]` del registro es la lista de certificados que ese RP puede tener.
+
+## v1.1.1 contra v1.2.1: seis cambios que rompen
+
+`packages/wrprc` implementa la **v1.2.1** (la que trae `@owf/eudi-wrprc`) y
+lleva la tabla de diferencias en `EDITIONS`, con un `detectEdition(header,
+payload)` que dice contra qué edición se emitió un certificado ajeno:
+
+| | v1.1.1 (2025-10) | v1.2.1 (2026-03) |
+|---|---|---|
+| Cabecera (tabla 5) | `typ alg x5c` **`b64` `cty`** | `typ alg x5c` |
+| Sujeto | `sub.legal_name` + `sub.id` | `sub` (identificador) + `sub_ln` |
+| Descripción del servicio | `service` | `srv_description` |
+| Autoridad de control | `dpa` con `name`/`country` | `supervisory_authority`, **sólo contacto** |
+| Claims del credential | `claims` | `claim` |
+| Intermediario | `act.sub.{id,name}` | `intermediary.{sub,sname}` |
+
+Los campos que la edición vigente ya no transporta se avisan al emitir en vez
+de descartarse en silencio.
 
 ## Aviso
 

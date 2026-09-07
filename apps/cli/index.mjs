@@ -8,6 +8,7 @@ import { cryptoProvider } from '@peculiar/x509';
 import { TrustedListProfiles, loadTrustedList, getTrustAnchors } from '@owf/eudi-tl';
 import { mintCa, mintLeaf, mintTlSigner, assertTlsoProfile } from '../../packages/ca/src/index.mjs';
 import { mintWrpac, assertWrpacProfile, WRPAC_POLICY } from '../../packages/ca/src/wrpac.mjs';
+import { buildWrprc, signWrprcCompact, assertWrprc, decodeWRPRC, detectEdition, droppedByEdition } from '../../packages/wrprc/src/index.mjs';
 import { inMemorySigner } from '../../packages/signer/src/index.mjs';
 import { buildTrustedListXml, signTrustedListXml, assertAnnexB } from '../../packages/tl-xml/src/index.mjs';
 import { AV_TL_PROFILE, assertAvProfile } from '../../packages/tl-xml/src/av-profile.mjs';
@@ -95,8 +96,10 @@ const cmds = {
 
   // trustlab mint-wrpac <nombre-ca> <nombre> <fichero-json-con-los-datos-del-RP>
   //   Access certificate de relying party con el perfil de TS 119 411-8.
-  async 'mint-wrpac'([caName, name, specPath]) {
-    const spec = await readJson(specPath);
+  async 'mint-wrpac'([caName, name, registryPath]) {
+    const registry = await readJson(registryPath);
+    // GEN-6.6.1-10: los atributos salen del registro, no de un fichero aparte.
+    const spec = { ...registry.identity, ...registry.wrpac, organization: registry.identity.legalName };
     const stored = await readJson(join(ROOT, `out/keys/${caName}.json`));
     const caKey = await crypto.subtle.importKey('jwk', stored.key,
       { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']);
@@ -113,6 +116,38 @@ const cmds = {
     await exportKeyChain(name, wrpac);
     console.log(`WRPAC ${name}: ${wrpac.cert.subject}`);
     console.log(`  política ${wrpac.policy} (${wrpac.policyOid}) · perfil 6.6.1 · OK`);
+  },
+
+  // trustlab issue-wrprc <fichero-registro> <caso-de-uso> <clave-firmante>
+  //   Registration certificate para UN caso de uso (TS 119 475: cardinalidad 1:1).
+  async 'issue-wrprc'([registryPath, useCaseId, signerName]) {
+    const registry = await readJson(registryPath);
+    const stored = await readJson(join(ROOT, `out/keys/${signerName}.json`));
+    const key = await crypto.subtle.importKey('jwk', stored.key,
+      { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']);
+
+    const payload = buildWrprc(registry, useCaseId, {
+      statusListUri: registry.statusListUri,
+    });
+    const problems = assertWrprc(payload);
+    if (problems.length) {
+      console.error('el payload no valida contra TS 119 475:');
+      for (const p of problems) console.error('  · ' + p);
+      process.exit(1);
+    }
+
+    const signer = inMemorySigner(key, stored.crt, crypto);
+    const jwt = await signWrprcCompact(payload, signer, signerName);
+
+    await mkdir(join(ROOT, 'out/wrprc'), { recursive: true });
+    const outPath = join(ROOT, `out/wrprc/${registry.identity.organizationIdentifier}-${useCaseId}.jwt`);
+    await writeFile(outPath, jwt);
+
+    const back = decodeWRPRC(jwt);
+    console.log(`WRPRC ${useCaseId} → ${outPath}`);
+    console.log(`  sujeto ${payload.sub?.legal_name ?? payload.name} · ${payload.entitlements.length} entitlement(s)`);
+    console.log(`  edición detectada al releerlo: ${detectEdition(back.header ?? {}, back.payload ?? back)}`);
+    for (const d of droppedByEdition(registry)) console.log(`  ⚠ no viaja en el certificado: ${d}`);
   },
 
   // trustlab add-entity <estado> <nombre-clave-emisión> "<nombre visible>" [nombre-clave-revocación]

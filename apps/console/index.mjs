@@ -194,6 +194,16 @@ const server = createServer(async (req, res) => {
     // clave privada en una pestana. El publisher NO tiene ninguna de estas
     // rutas: no puede descifrar claves y no debe servir WRPRC, que no es
     // material publicado sino material que se entrega a su titular.
+    if (parts[0] === 'lists' && parts.length === 2 && req.method === 'GET') {
+      const doc = await store.docs.get('*', parts[1]);
+      if (!doc) return send(res, 404, 'no existe');
+      const item = (await readiness(store)).find((i) => i.id === parts[1]);
+      return send(res, 200, views.listMembersPage({
+        item, doc, ...(await ops.listCandidates(store, parts[1])),
+        keys: await store.keys.list(), flash,
+      }));
+    }
+
     if (path === '/graph.svg' && req.method === 'GET') {
       const g = await buildGraph(store);
       return send(res, 200, graphSvg(g, { dangling: danglingChains(g) }), {
@@ -296,6 +306,27 @@ const server = createServer(async (req, res) => {
           (r) => `Retirada la version #${r.retirada} de ${r.id}: ${r.url} deja de servirse hasta reemitir.`);
       }
       return send(res, 404, 'no existe');
+    }
+
+    if (parts[0] === 'lists' && parts[2] === 'providers') {
+      const id = decodeURIComponent(parts[1]);
+      // Las filas llegan como `sel` (una por elegida) y campos indexados por
+      // ella: es la unica forma de que el orden del formulario no importe.
+      const seleccion = form.getAll('sel').map((ref) => {
+        const [tipo, valor] = [ref.slice(0, ref.indexOf(':')), ref.slice(ref.indexOf(':') + 1)];
+        return tipo === 'orphan'
+          ? { fingerprint: valor }
+          : {
+              keyName: valor,
+              displayName: form.get(`name:${valor}`),
+              cc: form.get(`cc:${valor}`),
+              revocationKeyName: form.get(`rev:${valor}`) || undefined,
+            };
+      });
+      return run(res, `/lists/${encodeURIComponent(id)}`, () => ops.setProviders(store, { id, seleccion }),
+        (r) => `${r.id}: ${r.entradas} entrada(s)` +
+          (r.quitadas > 0 ? `, ${r.quitadas} quitada(s)` : '') +
+          '. No publica: reemite la lista para que salga.');
     }
 
     if (parts[0] === 'lists' && parts[2] === 'remove-provider') {

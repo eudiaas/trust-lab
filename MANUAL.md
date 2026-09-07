@@ -230,8 +230,23 @@ rechace el certificado.
 
 ### 5.3 Poblar las listas
 
-Cada lista se puebla con el **ancla** de su dominio. Primero hay que quitar el
-proveedor de ejemplo que viene sembrado, porque su clave privada no existe:
+Cada lista se puebla con el **ancla** de su dominio.
+
+> **Consola: `/lists` → el nombre de la lista.** Es la forma normal de hacerlo.
+> La página lista todo lo que hay en el almacén con casillas: marcas lo que la
+> lista debe publicar, le pones el nombre con el que sale, y guardas. Lo que no
+> quede marcado, sale. Las entradas sembradas aparecen arriba en rojo, marcadas
+> y con la etiqueta *sin clave privada*: **desmarcarlas es todo lo que hay que
+> hacer** para quitarlas. Guardar no publica; hay un botón de emitir debajo.
+>
+> La página se adapta al tipo de lista, porque no publican lo mismo: en una AV
+> Trusted List cada fila es un certificado y pide el Estado miembro que lo
+> notifica; en una LoTE cada fila es un **ancla**, así que la CA y todo lo que
+> cuelga de ella son una sola fila (etiquetada *ancla de …*) y no varias
+> marcándose solas.
+
+Por CLI se hace de uno en uno. Primero hay que quitar el proveedor de ejemplo
+que viene sembrado, porque su clave privada no existe:
 
 ```bash
 for L in av-lab pid-lab wallet-lab wrpac-lab wrprc-lab; do
@@ -245,7 +260,8 @@ $T add-entity   wrpac-lab  wrpac-ca      "Lab Access Certificate Provider"
 $T add-entity   wrprc-lab  wrprc-signer  "Lab Registration Certificate Provider"
 ```
 
-> Consola: **Listas → Editar** (el registro se edita como documento JSON).
+> El JSON crudo sigue disponible en **Listas → JSON**, para lo que la página de
+> contenido no cubra.
 
 Los dos comandos no son intercambiables, y toman cosas distintas:
 
@@ -427,7 +443,7 @@ pinta son la misma.
 | una clave con su certificado | `/keys` → Borrar | `delete-key <nombre> [force]` |
 | una relying party y sus certificados | `/rps` → Borrar | `delete-rp <id> [force]` |
 | un WRPRC emitido | `/rps/<rp>` → Borrar | `delete-wrprc <id>` |
-| una entrada de una lista | `/lists` → Editar | `remove-provider <lista> <índice\|nombre>` |
+| una entrada de una lista | `/lists/<lista>` → desmarcar | `remove-provider <lista> <índice\|nombre>` |
 | lo publicado de una lista | `/lists` → Retirar | `unpublish <lista>` |
 
 El aviso dice **qué se rompe, con nombres**:
@@ -564,7 +580,8 @@ descubre siguiendo las listas.
 | Ruta | Qué hay |
 |---|---|
 | `/` | dashboard: el grafo de dependencias, qué se puede emitir y qué falta |
-| `/lists` | los documentos de lista, su estado de publicación y el editor |
+| `/lists` | las listas, su estado de publicación y el acceso a cada una |
+| `/lists/:id` | qué contiene una lista: selección de certificados y emisión |
 | `/keys` | pares clave+certificado: qué es cada uno, caducidad y descargas; emisión de CAs, del firmante de listas y de los firmantes de credenciales |
 | `/rps` | relying parties, alta de nuevas |
 | `/rps/:id` | servicios, finalidades, emisión y descarga de sus certificados |

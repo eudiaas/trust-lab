@@ -611,3 +611,159 @@ export async function reset(store, { scope = 'publicado', confirm, root } = {}) 
   }
   return { scope, retirados, claves: previo.keys.length, documentos: previo.docs.length, sembrados };
 }
+
+// ---------------------------------------------------------------------------
+// Composicion de listas
+//
+// Poblar una lista era `add-provider` / `add-entity`: solo anadir, un elemento
+// por comando, y para quitar algo habia que editar el JSON. El resultado
+// practico es que las listas acumulaban lo sembrado sin que nadie lo mirara —
+// que es como acaba habiendo un wallet provider por defecto que nadie creo.
+//
+// Esto lo convierte en lo que realmente es: elegir QUE contiene la lista, de
+// una vez, entre lo que hay en el almacen.
+// ---------------------------------------------------------------------------
+
+/**
+ * Candidatos a entrar en una lista, con lo que hace falta para decidir:
+ * que son, si su clave privada esta aqui, y si ya estan dentro.
+ */
+export async function listCandidates(store, id) {
+  const state = await loadDoc(store, id);
+  const { fingerprint } = await import('../../graph/src/index.mjs');
+  const { describeKey } = await import('../../ca/src/index.mjs');
+  const esAv = state.kind === 'etsi-tl-xml';
+
+  // Una lista AV publica el certificado que se le nombra (el Document Signer);
+  // una LoTE publica el ancla de la cadena. La huella con la que se compara
+  // "ya esta dentro" tiene que ser la misma que se guardaria al anadirlo.
+  const certOf = (doc) => (esAv ? doc.crt?.[0] : doc.crt?.at(-1));
+
+  const dentro = new Map();
+  for (const p of state.providers ?? []) {
+    for (const f of ['certPem', 'issuanceCertPem']) {
+      if (p[f]) dentro.set(fingerprint(p[f]), p);
+    }
+  }
+
+  const raw = store.rawKeys ?? store.keys;
+  const porHuella = new Map();
+  const vistos = new Set();
+  for (const name of await store.keys.list()) {
+    const doc = await raw.get(name);
+    const cert = certOf(doc);
+    if (!cert) continue;
+    const fp = fingerprint(cert);
+    vistos.add(fp);
+    let d = {};
+    try {
+      d = describeKey(cert);
+    } catch { /* se muestra igual, sin rol */ }
+    const actual = dentro.get(fp);
+    const fila = {
+      keyName: name, fingerprint: fp, subject: doc.subject ?? null,
+      role: d.role ?? null, ca: !!d.ca, expired: d.expired ?? null,
+      dentro: !!actual, displayName: actual?.name ?? derivarNombre(doc.subject),
+      cc: actual?.informationUri?.[0]?.slice(-2)?.toUpperCase() ?? null,
+      tambien: [],
+    };
+
+    // Una LoTE publica el ancla, asi que varias claves del almacen —la CA y
+    // todo lo que cuelga de ella— acaban en la MISMA entrada. Ofrecerlas como
+    // filas separadas hacia que marcar una dejase la otra marcada tambien, que
+    // parece un fallo y en realidad es una sola entrada vista dos veces.
+    const previa = porHuella.get(fp);
+    if (!previa) {
+      porHuella.set(fp, fila);
+      continue;
+    }
+    // Representa la fila la clave cuyo propio certificado ES el ancla.
+    const esAncla = (doc2) => doc2.crt?.[0] === doc2.crt?.at(-1);
+    if (!esAncla(await raw.get(previa.keyName)) && esAncla(doc)) {
+      fila.tambien = [...previa.tambien, previa.keyName];
+      porHuella.set(fp, fila);
+    } else {
+      previa.tambien.push(name);
+    }
+  }
+  const candidatos = [...porHuella.values()];
+
+  // Lo que la lista publica y no tiene clave aqui. Se ofrece para poder
+  // QUITARLO, que es justo lo que hace falta con lo sembrado.
+  const huerfanos = [];
+  for (const [fp, p] of dentro) {
+    if (vistos.has(fp)) continue;
+    huerfanos.push({ fingerprint: fp, displayName: p.name, dentro: true, sinClave: true });
+  }
+
+  return { id, kind: state.kind, esAv, candidatos, huerfanos, entradas: (state.providers ?? []).length };
+}
+
+const derivarNombre = (subject) => {
+  const o = /O=([^,]+)/.exec(subject ?? '')?.[1];
+  const cn = /CN=([^,]+)/.exec(subject ?? '')?.[1];
+  return (o ?? cn ?? '').trim() || null;
+};
+
+/**
+ * Fija de una vez el contenido de una lista.
+ *
+ * `seleccion` son las entradas que la lista debe tener DESPUES; lo que no este
+ * ahi, sale. Se reconstruye entera en vez de aplicar diferencias: una lista es
+ * una declaracion de en quien se confia, y expresarla como "quita esto, anade
+ * aquello" invita a que quede algo por el medio que nadie eligio.
+ *
+ * NO publica. Como todo cambio de estado, hace falta reemitir.
+ */
+export async function setProviders(store, { id, seleccion = [] }) {
+  const state = await loadDoc(store, id);
+  const esAv = state.kind === 'etsi-tl-xml';
+  const { AV_TL_PROFILE } = await import('../../tl-xml/src/av-profile.mjs');
+  const raw = store.rawKeys ?? store.keys;
+  const previas = state.providers ?? [];
+  const { fingerprint } = await import('../../graph/src/index.mjs');
+
+  const providers = [];
+  for (const sel of seleccion) {
+    if (sel.fingerprint && !sel.keyName) {
+      // Una entrada huerfana que se decide conservar: se copia tal cual, no se
+      // puede reconstruir sin la clave.
+      const previa = previas.find((p) =>
+        [p.certPem, p.issuanceCertPem].some((c) => c && fingerprint(c) === sel.fingerprint));
+      if (previa) providers.push(previa);
+      continue;
+    }
+    const doc = await raw.get(sel.keyName);
+    if (!doc?.crt?.length) throw new OpError(`la clave "${sel.keyName}" no tiene certificado`);
+    const name = sel.displayName?.trim() || derivarNombre(doc.subject) || sel.keyName;
+
+    if (esAv) {
+      const cc = (sel.cc ?? '').toUpperCase();
+      if (!/^[A-Z]{2}$/.test(cc)) {
+        throw new OpError(`falta el Estado miembro que notifica a "${name}"`, [
+          'la AV Trusted List lo exige: codigo ISO 3166-1 alpha-2',
+        ]);
+      }
+      providers.push({
+        name,
+        serviceName: `${name} — AV attestation issuance`,
+        informationUri: [AV_TL_PROFILE.paapInformationUriPrefix + cc.toLowerCase()],
+        certPem: doc.crt[0],
+      });
+    } else {
+      const revocacion = sel.revocationKeyName ? await raw.get(sel.revocationKeyName) : null;
+      providers.push({
+        name,
+        issuanceCertPem: doc.crt.at(-1),
+        ...(revocacion?.crt?.length ? { revocationCertPem: revocacion.crt.at(-1) } : {}),
+      });
+    }
+  }
+
+  state.providers = providers;
+  await store.docs.put(state.kind, id, state);
+  return {
+    id, entradas: providers.length, quitadas: previas.length - providers.length,
+    nombres: providers.map((p) => p.name), pendientePublicar: true,
+  };
+}

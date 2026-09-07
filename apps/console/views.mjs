@@ -453,10 +453,12 @@ export function listsPage({ items, flash }) {
     <table><tr><th>Lista</th><th>Tipo</th><th>Entradas</th><th>Publicada</th><th></th></tr>
     ${items
       .map(
-        (i) => `<tr><td>${esc(i.title)}<div class="meta mono">${esc(i.id)}</div></td>
+        (i) => `<tr><td><a href="/lists/${encodeURIComponent(i.id)}">${esc(i.title)}</a>
+        <div class="meta mono">${esc(i.id)}</div></td>
         <td class="meta">${esc(i.type)}</td><td>${i.entries}</td>
         <td>${i.published ? `#${i.published.sequence}` : '—'} ${badge(i)}</td>
-        <td><a href="/docs/${encodeURIComponent(i.id)}">Editar</a>
+        <td><a href="/lists/${encodeURIComponent(i.id)}">Contenido</a>
+        <a href="/docs/${encodeURIComponent(i.id)}" style="margin-left:.6rem">JSON</a>
         ${
           i.published
             ? delButton(`/delete/unpublish/${encodeURIComponent(i.id)}`, 'Retirar',
@@ -571,5 +573,105 @@ export function resetPage({ preview, flash }) {
         <button class="danger">Borrar todo</button>
       </form>
     </div>`,
+  });
+}
+
+/**
+ * Que contiene una lista. Es la pagina que faltaba.
+ *
+ * Antes se poblaba una lista anadiendo de uno en uno y se vaciaba editando el
+ * JSON, asi que en la practica las listas acumulaban lo sembrado sin que nadie
+ * lo mirara. Aqui la pregunta es la correcta —QUE contiene esta lista— y se
+ * responde de una vez, marcando sobre lo que hay en el almacen.
+ */
+export function listMembersPage({ item, doc, esAv, candidatos, huerfanos, keys, flash }) {
+  const row = (c) => {
+    const check = `<input type="checkbox" name="sel" value="key:${esc(c.keyName)}"
+      id="c-${esc(c.keyName)}" ${c.dentro ? 'checked' : ''}>`;
+    const cc = esAv
+      ? `<input type="text" name="cc:${esc(c.keyName)}" value="${esc(c.cc ?? 'ES')}" size="2"
+           maxlength="2" title="Estado miembro que notifica al PAAP" style="width:3.2rem">`
+      : `<select name="rev:${esc(c.keyName)}" title="clave del servicio de revocacion (opcional)">
+           <option value="">sin revocacion</option>
+           ${keys.filter((k) => k !== c.keyName).map((k) => `<option>${esc(k)}</option>`).join('')}
+         </select>`;
+    return `<tr>
+      <td>${check}</td>
+      <td><label for="c-${esc(c.keyName)}" class="mono">${esc(c.keyName)}</label>
+        <div class="meta">${esc(c.role ?? '')}${c.expired ? ' · <b>caducado</b>' : ''}${
+          c.tambien?.length ? ` · ancla de ${esc(c.tambien.join(', '))}` : ''
+        }</div></td>
+      <td class="meta mono" style="max-width:24rem">${esc(c.subject ?? '')}</td>
+      <td><input type="text" name="name:${esc(c.keyName)}" value="${esc(c.displayName ?? '')}"
+        placeholder="nombre publicado" size="26"></td>
+      <td>${cc}</td>
+    </tr>`;
+  };
+
+  const huerfanoRows = huerfanos
+    .map(
+      (h) => `<tr>
+      <td><input type="checkbox" name="sel" value="orphan:${esc(h.fingerprint)}"
+        id="o-${esc(h.fingerprint)}" checked></td>
+      <td><label for="o-${esc(h.fingerprint)}">${esc(h.displayName ?? '')}</label>
+        <div class="meta"><span class="pill bad">sin clave privada</span></div></td>
+      <td class="meta mono">${esc(h.fingerprint.slice(0, 24))}…</td>
+      <td class="meta" colspan="2">No se puede emitir nada con esto. Desmarcalo para quitarlo.</td>
+    </tr>`,
+    )
+    .join('');
+
+  return layout({
+    title: item?.title ?? doc.id,
+    path: '/lists', flash,
+    body: `<h1>${esc(item?.title ?? doc.id)}</h1>
+    <p class="lead">${esc(item?.type ?? doc.kind)} · <span class="mono">${esc(doc.url ?? '')}</span></p>
+
+    ${
+      huerfanos.length
+        ? `<div class="flash bad">${esc(
+            `${huerfanos.length} entrada(s) publicadas sin clave privada en este almacen. ` +
+              'La lista dice "confia en esto" y nadie puede emitir con ello: es lo que viene sembrado de fabrica. ' +
+              'Desmarcalas y guarda.',
+          )}</div>`
+        : ''
+    }
+
+    <form method="post" action="/lists/${encodeURIComponent(doc.id)}/providers">
+      <div class="card">
+        <h3>Que contiene esta lista</h3>
+        <div class="meta">Marca lo que debe publicar. ${
+          esAv
+            ? 'Una AV Trusted List publica el <strong>Document Signer</strong>, no la IACA, y cada entrada necesita el Estado miembro que la notifica.'
+            : 'Una LoTE publica el <strong>ancla de la cadena</strong>: da igual que marques la CA o una hoja que cuelgue de ella, se guarda la raiz.'
+        }</div>
+        <table><tr><th></th><th>Clave</th><th>Subject</th><th>Nombre publicado</th>
+          <th>${esAv ? 'EM' : 'Revocacion'}</th></tr>
+          ${huerfanoRows}${candidatos.map(row).join('')}
+        </table>
+        <div style="margin-top:.8rem"><button class="primary">Guardar seleccion</button>
+        <span class="meta" style="margin-left:.8rem">Guardar no publica: hay que reemitir.</span></div>
+      </div>
+    </form>
+
+    <div class="card">
+      <h3>Publicar</h3>
+      <div class="meta">${
+        item?.blockers?.length
+          ? 'No se puede emitir todavia:'
+          : item?.published
+            ? `Publicada #${item.published.sequence}. Reemite para que salga lo que acabas de guardar.`
+            : 'Sin publicar.'
+      }</div>
+      ${
+        item?.blockers?.length
+          ? `<ul class="blockers">${item.blockers.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>`
+          : `<form class="inline" method="post" action="/lists/${encodeURIComponent(doc.id)}/build">
+               <select name="signer">${(item?.signers ?? []).map((x) => `<option>${esc(x)}</option>`).join('')}</select>
+               <button class="primary">Emitir y publicar</button></form>`
+      }
+    </div>
+    <p><a href="/docs/${encodeURIComponent(doc.id)}">Editar el documento entero</a> ·
+    <a href="/lists">Volver</a></p>`,
   });
 }

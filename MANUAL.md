@@ -141,10 +141,14 @@ El **dashboard** de la consola (`/`) es ese grafo calculado sobre el almacén:
 cada tarjeta dice si algo se puede emitir ya o qué falta. Si no sabes cuál es el
 siguiente paso, la respuesta está ahí.
 
-> ⚠ **Las listas vienen sembradas con un proveedor de ejemplo cuya clave privada
-> no existe.** Son anclas que nadie puede usar. Un despliegue nuevo tiene que
-> quitarlas y poner las suyas (`remove-provider`, §5.3); si no, las listas
-> declaran confianza en material que no puedes emitir.
+> **Las cinco listas se siembran vacías.** Un ancla de ejemplo sería un
+> certificado cuya clave privada no existe en ningún sitio: la lista diría
+> «confía en esto» y nadie podría emitir con ello. Un despliegue nuevo empieza
+> sin nada publicable y el dashboard dice qué falta.
+>
+> Si tu almacén es anterior al 2026-09-07, **sí tiene esas anclas de ejemplo**
+> y hay que quitarlas: `/lists/<lista>` → desmarcar → guardar → emitir, o
+> `remove-provider` por CLI. `/graph` las señala en rojo.
 
 ---
 
@@ -496,9 +500,8 @@ hay papelera, y es lo único que separa esto de un clic accidental.
 
 ⚠ **«Borrar todo» es irreversible**: las claves privadas están cifradas en ese
 almacén y en ningún otro sitio, así que lo que ya hubieras entregado a alguien
-deja de poder reemitirse igual. Y el resembrado **devuelve las anclas de ejemplo
-sin clave privada**, que hay que volver a quitar (§5.3) o vuelves al mismo
-problema.
+deja de poder reemitirse igual. El resembrado sí es inocuo: `state/` trae las listas
+vacías, así que no reaparece ninguna ancla de ejemplo.
 
 <details>
 <summary>Si prefieres hacerlo por fuera</summary>
@@ -517,9 +520,10 @@ En **Railway**, la equivalencia es la pestaña *Data* del servicio Postgres:
 DROP TABLE IF EXISTS artifacts, keys, docs;
 ```
 
-Al arrancar contra una base vacía, el servicio vuelve a sembrar `state/`. Las
-dos vías hacen lo mismo que «Borrar todo», sin inventario previo ni frase de
-confirmación.
+Al arrancar contra una base vacía, el servicio vuelve a sembrar `state/` — que
+son los documentos con sus listas **vacías**, así que no reaparece ningún ancla
+de ejemplo. Las dos vías hacen lo mismo que «Borrar todo», sin inventario previo
+ni frase de confirmación.
 
 </details>
 
@@ -667,10 +671,11 @@ RP no se pisen el certificado.
 firmante de listas, access certificate, hoja— sale de las extensiones del
 certificado, y es lo que muestra la columna «Qué es» de `/keys`.
 
-**Las listas sembradas traen anclas inservibles.** El proveedor de ejemplo de
-cada lista tiene un certificado cuya clave privada no existe en ningún sitio. Si
-no lo quitas (`remove-provider`), tus listas declaran confianza en material que
-no puedes emitir, y lo que sí emitas no encadenará con nada.
+**Una lista solo vale por lo que contiene.** Las cinco se siembran vacías desde
+el 2026-09-07 justamente para no arrastrar anclas que nadie puede usar; los
+almacenes creados antes sí las tienen. Un ancla publicada cuya clave privada no
+está en el almacén hace que la lista declare confianza en material que no puedes
+emitir. `/graph` las marca en rojo.
 
 **Firmar con la clave equivocada produce artefactos que no encadenan.** Un WRPRC
 firmado con el TLSO valida criptográficamente y no llega a `wrprc-lab`, porque el

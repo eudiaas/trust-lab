@@ -31,17 +31,9 @@
   "sequenceNumber": 9,
   "validityDays": 30,
   "pointerToSelf": {
-    "signerCertPem": "-----BEGIN CERTIFICATE-----\nMIIB4zCCAYigAwIBAgIIBoXjAdX5DeAwCgYIKoZIzj0EAwIwTTELMAkGA1UEBhMC\nRVUxGTAXBgNVBAoTEGVzcHVuaSBUcnVzdCBMYWIxIzAhBgNVBAMTGmVzcHVuaSBU\ncnVzdCBMYWIgVEwgU2lnbmVyMB4XDTI2MDkwNjEyNTQwNFoXDTI5MDkwNjEyNTQw\nNFowTTELMAkGA1UEBhMCRVUxGTAXBgNVBAoTEGVzcHVuaSBUcnVzdCBMYWIxIzAh\nBgNVBAMTGmVzcHVuaSBUcnVzdCBMYWIgVEwgU2lnbmVyMFkwEwYHKoZIzj0CAQYI\nKoZIzj0DAQcDQgAEfFR2cDyfdH9zzO+AhCV65SWLgJMQ84/mp0kLyywSNWnW+z3Z\nQUsKtd3QY0lXc1IFDiDKgQ5eIhVNCJh2QufMl6NSMFAwDAYDVR0TAQH/BAIwADAO\nBgNVHQ8BAf8EBAMCBsAwEQYDVR0lBAowCAYGBACRNwMAMB0GA1UdDgQWBBRC7/Yb\nBX0V8KH/QADQ3iEGActDLjAKBggqhkjOPQQDAgNJADBGAiEAvykU4WL+Cptk8rNK\nqCvnncsQCpKcwfAAziB5V8c2CDECIQD/Fh9mwe2SwsdPcTajEQp3Sh5HJbd5etKb\ncEotXic5lQ==\n-----END CERTIFICATE-----",
+    "signerCertPem": "-----BEGIN CERTIFICATE-----\nMIIB4zCCAYmgAwIBAgIJANoOc7TBgsawMAoGCCqGSM49BAMCME0xCzAJBgNVBAYT\nAkVVMRkwFwYDVQQKExBlc3B1bmkgVHJ1c3QgTGFiMSMwIQYDVQQDExplc3B1bmkg\nVHJ1c3QgTGFiIFRMIFNpZ25lcjAeFw0yNjA5MDYyMDQzNTdaFw0yOTA5MDYyMDQz\nNTdaME0xCzAJBgNVBAYTAkVVMRkwFwYDVQQKExBlc3B1bmkgVHJ1c3QgTGFiMSMw\nIQYDVQQDExplc3B1bmkgVHJ1c3QgTGFiIFRMIFNpZ25lcjBZMBMGByqGSM49AgEG\nCCqGSM49AwEHA0IABHDkESxkG50MihXaC1R2knW538pZ1KYb0zOmHR0+dt/02y0U\ncffU9Otcst6kc2pSD2/UiZnsaoZ6vdziJ3TbAg2jUjBQMAwGA1UdEwEB/wQCMAAw\nDgYDVR0PAQH/BAQDAgbAMBEGA1UdJQQKMAgGBgQAkTcDADAdBgNVHQ4EFgQUbRUg\n9hip/bXR/doTtf92TZk8ZmcwCgYIKoZIzj0EAwIDSAAwRQIgB0J6KU7PczjVg+5X\n/ejwb6/tj+zq/6QnhgVXaNR0po0CIQCweSTgLqL75P52ZMORE2Ybt7AXHT2hpZcI\nZ4b5ChUphA==\n-----END CERTIFICATE-----",
     "mimeType": "application/vnd.etsi.tsl+xml"
   },
-  "providers": [
-    {
-      "name": "Lab AV Attestation Provider",
-      "serviceName": "Lab AV Attestation Provider — AV attestation issuance",
-      "informationUri": [
-        "http://trust.tech.ec.europa.eu/lists/age-verification/paap/es"
-      ],
-      "certPem": "-----BEGIN CERTIFICATE-----\nMIIB6TCCAY+gAwIBAgIINgHciCYPC9YwCgYIKoZIzj0EAwIwSTELMAkGA1UEBhMC\nRVMxJDAiBgNVBAoTG0xhYiBBViBBdHRlc3RhdGlvbiBQcm92aWRlcjEUMBIGA1UE\nAxMLTGFiIEFWIElBQ0EwHhcNMjYwOTA2MTIxOTQzWhcNMjcwOTA3MTIxOTQzWjBK\nMQswCQYDVQQGEwJFUzEkMCIGA1UEChMbTGFiIEFWIEF0dGVzdGF0aW9uIFByb3Zp\nZGVyMRUwEwYDVQQDEwxMYWIgQVYgRFMgMDEwWTATBgcqhkjOPQIBBggqhkjOPQMB\nBwNCAAR5EP9mcUSfnapgl7scI4RzRuGBR7a6BUtE137X3+QXdarHon57v4LGPkYf\nwNyD5ILDSTlQvj4sJk2LJjX4D3VMo2AwXjAMBgNVHRMBAf8EAjAAMA4GA1UdDwEB\n/wQEAwIHgDAdBgNVHQ4EFgQUaAqTIbYFOZccEsbcZtmWkuBrPtMwHwYDVR0jBBgw\nFoAUI+U869Qs1H98HpKJGaC0mI2fsDwwCgYIKoZIzj0EAwIDSAAwRQIhAPa5eG2D\noGpA7n4h1wjOGcutVLibRRPjK2xBqlEaf2NtAiAXb9JkkgDqeCJ35PhJJ8bQyl+M\nsz68kHgt3JkAg2VOcw==\n-----END CERTIFICATE-----"
-    }
-  ]
+  "providers": [],
+  "_providers": "Las entradas se eligen en la consola (/lists/<id>) o con add-provider/add-entity. Se siembra VACIA a proposito: un ancla de ejemplo es un certificado cuya clave privada no existe en ningun sitio, asi que la lista diria \"confia en esto\" y nadie podria emitir con ello."
 }

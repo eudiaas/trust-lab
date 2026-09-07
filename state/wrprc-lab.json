@@ -16,10 +16,6 @@
   },
   "sequenceNumber": 2,
   "validityDays": 30,
-  "providers": [
-    {
-      "name": "Lab Registration Certificate Provider",
-      "issuanceCertPem": "-----BEGIN CERTIFICATE-----\nMIIBxjCCAW2gAwIBAgIIOaogVvQS8JUwCgYIKoZIzj0EAwIwRjELMAkGA1UEBhMC\nRVMxGDAWBgNVBAoTD0xhYiBSQyBQcm92aWRlcjEdMBsGA1UEAxMUTGFiIFdSUFJD\nIElzc3VpbmcgQ0EwHhcNMjYwOTA2MTMxODE3WhcNMzYwOTA0MTMxODE3WjBGMQsw\nCQYDVQQGEwJFUzEYMBYGA1UEChMPTGFiIFJDIFByb3ZpZGVyMR0wGwYDVQQDExRM\nYWIgV1JQUkMgSXNzdWluZyBDQTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABBCQ\n8R7Rcq/v/cUsuv1ZPT780+PysHgD9Yvpltpy1p+9jLmLdy8JcXXGlCM6mYySuWVD\nL2+7wsw9XTXkqp2HeuKjRTBDMBIGA1UdEwEB/wQIMAYBAf8CAQAwDgYDVR0PAQH/\nBAQDAgEGMB0GA1UdDgQWBBRsM6qqRQfLskgwts57bRTZRu7toDAKBggqhkjOPQQD\nAgNHADBEAiApu3LOp0ImsYhuHETe/tTGhmM4j3OszDn94kChcx06ogIgckNEN/43\n6KEDqxd4ewppNp7XDtMjoHu9DQ60KyAUVJk=\n-----END CERTIFICATE-----"
-    }
-  ]
+  "providers": [],
+  "_providers": "Las entradas se eligen en la consola (/lists/<id>) o con add-provider/add-entity. Se siembra VACIA a proposito: un ancla de ejemplo es un certificado cuya clave privada no existe en ningun sitio, asi que la lista diria \"confia en esto\" y nadie podria emitir con ello."
 }

@@ -141,4 +141,14 @@ async function serveIndex(res) {
 
 server.listen(PORT, () => {
   console.log(`publisher escuchando en :${PORT} · almacen ${store.kind} · solo lectura`);
+  // Sintoma tipico del primer despliegue: los dos servicios arrancan el
+  // publisher porque al de la consola le falta TRUST_LAB_APP, y como los dos
+  // responden se tarda en ver que pasa. Si este proceso tiene la contrasena de
+  // la consola, casi seguro que se pretendia que FUERA la consola.
+  if (process.env.CONSOLE_PASSWORD) {
+    console.warn(
+      'aviso: este servicio corre como PUBLISHER pero tiene CONSOLE_PASSWORD en el ' +
+        'entorno. Si querias la consola, define TRUST_LAB_APP=console y redespliega.',
+    );
+  }
 });

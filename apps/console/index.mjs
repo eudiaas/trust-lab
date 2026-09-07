@@ -184,6 +184,7 @@ const server = createServer(async (req, res) => {
           id: d.id, url: d.url, size: d.size, entries: d.entries ?? {},
           revoked: Object.values(d.entries ?? {}).filter((e) => e.status !== 'valid').length,
           issuerKey: d.issuerKey ?? null, issuer: d.issuer ?? null,
+          assigned: d.assigned ?? {},
           published: await store.artifacts.latest('status', d.id),
         });
       }

@@ -6,13 +6,14 @@
 // confianza es una jerarquia, no una maraña. De izquierda a derecha va la
 // direccion de la confianza: quien firma → la lista → lo que la lista publica
 // → lo que cuelga de ello → lo emitido.
-const COL = { key_root: 0, list: 1, key_anchor: 2, key_leaf: 3, artifact: 4 };
+const COL = { key_root: 0, list: 1, key_anchor: 2, key_leaf: 3, artifact: 4, status: 5 };
 const W = 210, H = 46, GAP_X = 96, GAP_Y = 22, PAD = 26;
 
 const esc = (s) => String(s ?? '').replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
 
 /** A que columna va cada nodo, segun su papel en el grafo y no su tipo. */
 function columnOf(n, g) {
+  if (n.type === 'status') return COL.status;   // carril propio, al final
   if (n.type === 'list') return COL.list;
   if (n.type === 'wrprc' || n.type === 'rp') return COL.artifact;
   if (n.type === 'orphan') return COL.key_anchor;
@@ -31,6 +32,7 @@ const STYLE = {
   rp: { fill: 'var(--surface-2)', stroke: 'var(--border)' },
   wrprc: { fill: 'var(--surface-2)', stroke: 'var(--border)' },
   orphan: { fill: '#da36331a', stroke: 'var(--bad)' },
+  status: { fill: '#d299221a', stroke: 'var(--warn)' },
 };
 
 export function graphSvg(g, { dangling = [] } = {}) {
@@ -49,7 +51,7 @@ export function graphSvg(g, { dangling = [] } = {}) {
     maxRows = Math.max(maxRows, list.length);
     list.forEach((n, i) => pos.set(n.id, { x: PAD + c * (W + GAP_X), y: PAD + i * (H + GAP_Y) }));
   }
-  const width = PAD * 2 + 5 * W + 4 * GAP_X;
+  const width = PAD * 2 + 6 * W + 5 * GAP_X;
   const height = PAD * 2 + maxRows * (H + GAP_Y);
 
   const edges = g.edges
@@ -83,6 +85,8 @@ export function graphSvg(g, { dangling = [] } = {}) {
             : 'sin publicar'
           : n.type === 'orphan'
             ? 'sin clave privada'
+            : n.type === 'status'
+            ? `${n.gastadas}/${n.size} gastadas · ${n.revocadas} revocada(s)`
             : n.type === 'key'
               ? (n.ca ? 'CA' : 'hoja') + (n.expired ? ' · CADUCADO' : '')
               : n.type;
@@ -107,5 +111,6 @@ export function graphSvg(g, { dangling = [] } = {}) {
 }
 
 export const COLUMN_TITLES = [
-  'firma las listas', 'listas', 'anclas publicadas', 'lo que cuelga de ellas', 'emitido',
+  'firma las listas', 'listas de confianza', 'anclas publicadas',
+  'lo que cuelga de ellas', 'emitido', 'revocacion',
 ];

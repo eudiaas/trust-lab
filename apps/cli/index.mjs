@@ -153,7 +153,10 @@ const cmds = {
     console.log(`WRPRC ${r.id} → ${r.artifact?.path ?? `${store.kind}:wrprc/${r.id}`}`);
     console.log(`  sujeto ${r.subject} · ${r.entitlements} entitlement(s)`);
     console.log(`  edicion detectada al releerlo: ${r.edition}`);
-    if (r.statusIndex !== undefined) console.log(`  revocable en ${r.statusUri} posicion ${r.statusIndex}`);
+    if (r.statusIndex !== undefined) {
+      console.log(`  revocable en ${r.statusUri} posicion ${r.statusIndex}` +
+        (r.liberada !== null && r.liberada !== undefined ? ` (la ${r.liberada} queda gastada)` : ''));
+    }
     for (const a of r.avisos ?? []) console.log(`  ⚠ ${a}`);
     for (const d of r.dropped) console.log(`  ⚠ no viaja en el certificado: ${d}`);
   },
@@ -197,8 +200,7 @@ const cmds = {
       ...(identifierType ? { identifierType } : {}),
     });
     console.log(`registro ${r.id}: ${r.legalName}`);
-    const idx = r.statusList && Object.values(r.statusList.indexByIntendedUse)[0];
-    if (r.statusList) console.log(`  revocable en ${r.statusList.uri} posicion ${idx}`);
+    if (r.statusList) console.log(`  se revocara en ${r.statusList.uri} (posicion al emitir)`);
     else console.log('  sin lista de revocacion: los WRPRC saldran sin `status`');
     console.log('  esqueleto valido; rellena los campos PENDIENTE antes de emitir nada');
   },

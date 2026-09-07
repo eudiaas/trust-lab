@@ -474,7 +474,34 @@ export function statusPage({ lists, emisores = [], flash }) {
       <div class="meta">Revoca <strong>${esc(l.issuer ?? 'sin emisor asignado')}</strong>${
         l.issuerKey ? ` · firma <span class="mono">${esc(l.issuerKey)}</span>` : ''
       }</div>
-      <div class="meta mono">${esc(l.url ?? '')} · ${l.size} posiciones · ${l.revoked} no valida(s)</div>
+      <div class="meta mono">${esc(l.url ?? '')} · ${l.size} posiciones · ${
+        Object.keys(l.assigned ?? {}).length
+      } gastadas · ${l.revoked} no valida(s)</div>
+      ${(() => {
+        const usadas = Object.entries(l.assigned ?? {});
+        if (!usadas.length) return '';
+        const enUso = usadas.filter(([, v]) => !v.releasedAt);
+        const libres = usadas.filter(([, v]) => v.releasedAt);
+        return `<details><summary class="meta">Libro de asignaciones — ${enUso.length} en uso,
+          ${libres.length} gastada(s) sin reasignar</summary>
+          <table style="margin-top:.5rem"><tr><th>Posicion</th><th>Para</th><th>Estado</th></tr>
+          ${usadas
+            .sort((a, b) => Number(a[0]) - Number(b[0]))
+            .map(
+              ([idx, v]) => `<tr><td class="mono">${esc(idx)}</td>
+              <td class="meta">${esc([v.registry, v.service, v.use].filter(Boolean).join(' / '))}</td>
+              <td>${
+                v.releasedAt
+                  ? `<span class="pill dim">gastada</span> <span class="meta">${esc(v.motivo ?? '')}</span>`
+                  : '<span class="pill ok">en uso</span>'
+              }</td></tr>`,
+            )
+            .join('')}</table>
+          <p class="note">Una posicion liberada no vuelve al sorteo. La 13.3 del borrador de
+          Token Status List obliga a impedir la doble asignacion: <span class="mono">uri</span> +
+          <span class="mono">idx</span> identifican de forma unica, y reciclarlos haria que un
+          certificado nuevo heredara el rastro del viejo.</p></details>`;
+      })()}
       ${
         l.issuerKey
           ? ''
@@ -499,8 +526,8 @@ export function statusPage({ lists, emisores = [], flash }) {
     title: 'Revocacion',
     path: '/status', flash,
     body: `<h1>Revocacion</h1>
-    <p class="lead">Una lista por emisor. La firma <strong>quien emitio los certificados que
-    cubre</strong> —no el operador del esquema de confianza, que no emitio ninguno— y por eso
+    <p class="lead">Una lista por emisor, con posiciones <strong>al azar</strong> y que no se
+    reciclan. La firma <strong>quien emitio los certificados que cubre</strong> —no el operador del esquema de confianza, que no emitio ninguno— y por eso
     aqui no se elige firmante: lo impone el documento. Cambiar una posicion no publica nada;
     hay que reemitir.</p>
     ${lists.map(card).join('') || '<p class="meta">No hay ninguna lista todavia.</p>'}
@@ -583,7 +610,8 @@ export function listsPage({ items, flash }) {
  * pueden discrepar.
  */
 export function graphPage({ svg, graph, dangling, flash }) {
-  const cols = ['firma las listas', 'listas', 'anclas publicadas', 'lo que cuelga de ellas', 'emitido'];
+  const cols = ['firma las listas', 'listas de confianza', 'anclas publicadas',
+    'lo que cuelga de ellas', 'emitido', 'revocacion (una por emisor)'];
   return layout({
     title: 'Dependencias',
     path: '/graph', flash,

@@ -16,6 +16,7 @@ import { buildLote, signLoteCompact, verifyLoteCompact, assertLote, assertIdenti
 import { buildWrprc, signWrprcCompact, assertWrprc, decodeWRPRC, detectEdition, droppedByEdition } from '../../wrprc/src/index.mjs';
 import { assertRegistry, toWrpacSpec, toWrprcInput, newRegistry } from '../../registry/src/index.mjs';
 import * as x509 from '@peculiar/x509';
+import { randomInt } from 'node:crypto';
 import { signStatusListCompact, readStatus, STATUS_BY_NAME } from '../../status/src/index.mjs';
 import { TrustedListProfiles, loadTrustedList, getTrustAnchors } from '@owf/eudi-tl';
 
@@ -335,7 +336,23 @@ export async function issueWrprc(store, crypto, { registryId, serviceId, useId, 
 
   const { signer } = await importSigner(store, crypto, signerName);
   const sl = registry.statusList;
-  const idx = sl?.indexByIntendedUse?.[useId];
+
+  // Una posicion nueva en cada emision, y la anterior liberada. Lo pide la
+  // 13.2: "every re-issued Referenced Token MUST have a fresh Status List
+  // entry in order to prevent the index value from becoming a possible source
+  // of correlation". Con la posicion fija, dos versiones del mismo WRPRC
+  // comparten `uri`+`idx`, que es justo el par que la 12.5 llama trazable.
+  let idx = sl?.indexByIntendedUse?.[useId];
+  let liberada = null;
+  if (sl?.listId) {
+    if (idx !== undefined) {
+      await releaseIndex(store, sl.listId, idx, `reemision de ${serviceId}/${useId}`);
+      liberada = idx;
+    }
+    idx = await allocateIndex(store, sl.listId, { registry: registryId, service: serviceId, use: useId });
+    registry.statusList.indexByIntendedUse = { ...(sl.indexByIntendedUse ?? {}), [useId]: idx };
+    await store.docs.put(registry.kind ?? 'doc', registryId, registry);
+  }
 
   const payload = buildWrprc(toWrprcInput(registry, serviceId, useId), {
     statusListUri: sl?.uri,
@@ -382,7 +399,7 @@ export async function issueWrprc(store, crypto, { registryId, serviceId, useId, 
     subject: payload.sub_ln ?? payload.name,
     entitlements: payload.entitlements.length,
     edition: detectEdition(back.header ?? {}, back.payload ?? back),
-    statusUri: sl?.uri, statusIndex: idx, avisos,
+    statusUri: sl?.uri, statusIndex: idx, liberada, avisos,
     dropped: droppedByEdition(registry),
   };
 }
@@ -458,21 +475,76 @@ export async function exportArtifact(store, { kind, id, sequence }) {
 // ---------------------------------------------------------------------------
 
 /** Posiciones de la lista de revocacion que ya tiene reservadas algun registro. */
+/**
+ * Posiciones que NO se pueden entregar, por cualquiera de las tres razones.
+ *
+ * El libro de asignaciones vive en la propia status list (`assigned`), no en
+ * los registros: una posicion sigue gastada cuando el registro que la tenia ya
+ * no existe, y si el rastro viviera en el registro se iria con el.
+ */
 async function takenIndexes(store, listId) {
   const taken = new Set();
+  const lista = await store.docs.get('*', listId).catch(() => null);
+
+  // 1. Entregadas alguna vez. Incluye las liberadas: una posicion no se
+  //    recicla NUNCA. Reutilizarla haria que un certificado nuevo heredase el
+  //    estado del viejo — y peor, que quien guardase el viejo veredicto lo
+  //    aplicase al nuevo titular.
+  for (const idx of Object.keys(lista?.assigned ?? {})) taken.add(Number(idx));
+
+  // 2. Marcadas como no validas, aunque nadie las reclame.
+  for (const [idx, e] of Object.entries(lista?.entries ?? {})) {
+    if (e?.status && e.status !== 'valid') taken.add(Number(idx));
+  }
+
+  // 3. Declaradas por algun registro. Es compatibilidad hacia atras: los
+  //    registros anteriores al libro de asignaciones llevan la posicion dentro.
   for (const doc of await store.docs.list('*')) {
     if (!doc.walletRelyingParty || doc.statusList?.listId !== listId) continue;
     for (const idx of Object.values(doc.statusList.indexByIntendedUse ?? {})) taken.add(Number(idx));
   }
-  // Una posicion revocada tampoco esta libre, aunque nadie la reclame ya. Si se
-  // reutiliza, el certificado que la reciba nace revocado — y no se nota al
-  // emitirlo, sino cuando alguien lo valida. Pasa en cuanto se borra un RP
-  // cuya posicion estaba marcada.
-  const lista = await store.docs.get('*', listId).catch(() => null);
-  for (const [idx, e] of Object.entries(lista?.entries ?? {})) {
-    if (e?.status && e.status !== 'valid') taken.add(Number(idx));
-  }
   return taken;
+}
+
+/**
+ * Entrega una posicion libre, elegida AL AZAR.
+ *
+ * Secuencial filtra: la posicion dice cuantos certificados se habian emitido
+ * antes que el tuyo, y dos posiciones contiguas delatan que se emitieron
+ * seguidos. Como la lista se publica entera y es publica, eso lo lee
+ * cualquiera. Al azar sobre un espacio reservado de golpe, la posicion no dice
+ * nada — que es justo por lo que la lista se reserva entera.
+ */
+async function allocateIndex(store, listId, quien) {
+  const lista = await loadDoc(store, listId);
+  const size = lista.size ?? 1024;
+  const taken = await takenIndexes(store, listId);
+  const libres = size - taken.size;
+  if (libres <= 0) {
+    throw new OpError(`la lista "${listId}" no tiene posiciones libres`, [
+      `${taken.size} de ${size} gastadas; las liberadas no se reciclan`,
+    ]);
+  }
+
+  // Sortear entre las libres, no sortear y reintentar: con la lista casi llena
+  // lo segundo degrada a un bucle sin cota.
+  const disponibles = [];
+  for (let i = 0; i < size; i += 1) if (!taken.has(i)) disponibles.push(i);
+  const idx = disponibles[randomInt(disponibles.length)];
+
+  lista.assigned = lista.assigned ?? {};
+  lista.assigned[idx] = { ...quien, assignedAt: new Date().toISOString() };
+  await store.docs.put(lista.kind, listId, lista);
+  return idx;
+}
+
+/** Marca una posicion como liberada. Sigue gastada: no vuelve al sorteo. */
+async function releaseIndex(store, listId, idx, motivo) {
+  const lista = await store.docs.get('*', listId).catch(() => null);
+  if (!lista?.assigned?.[idx]) return false;
+  lista.assigned[idx] = { ...lista.assigned[idx], releasedAt: new Date().toISOString(), motivo };
+  await store.docs.put(lista.kind, listId, lista);
+  return true;
 }
 
 /**
@@ -495,17 +567,11 @@ export async function createRp(store, { id, statusListId, ...rest }) {
   if (statusListId) {
     const list = await store.docs.get('*', statusListId);
     if (!list) throw new OpError(`no existe la lista de revocacion "${statusListId}"`);
-    const taken = await takenIndexes(store, statusListId);
-    let idx = 0;
-    while (taken.has(idx)) idx += 1;
-    if (idx >= (list.size ?? 0)) {
-      throw new OpError(`la lista "${statusListId}" no tiene posiciones libres`, [`tamano ${list.size}`]);
-    }
-    statusList = {
-      listId: statusListId,
-      uri: list.url,
-      indexByIntendedUse: { [rest.intendedUseId ?? 'use-1']: idx },
-    };
+    // Sin posicion: "Each Referenced Token is allocated an index **during
+    // issuance**" (draft-ietf-oauth-status-list-21, seccion 1). Reservarla al
+    // dar de alta la relying party la gastaba aunque no se emitiera nada, y
+    // ademas impedia cumplir la 13.2 — que cada reemision lleve una nueva.
+    statusList = { listId: statusListId, uri: list.url, indexByIntendedUse: {} };
     // La URL de la lista es la unica pista fiable del dominio con el que se
     // esta operando: el resto de URLs del esqueleto salen de ahi.
     if (!baseUrl && list.url) {
@@ -595,6 +661,25 @@ export async function deleteRp(store, { id, force = false }) {
   }
 
   const retirados = [];
+  const listId = doc.statusList?.listId;
+  for (const [useId, idx] of Object.entries(doc.statusList?.indexByIntendedUse ?? {})) {
+    if (listId && (await releaseIndex(store, listId, idx, `borrado el registro ${id}`))) {
+      retirados.push(`posicion ${idx} de ${listId} liberada (no se reasigna)`);
+    } else if (listId) {
+      // Sin entrada en el libro es un registro anterior a el: se anota ahora
+      // para que la posicion quede gastada igualmente.
+      const lista = await store.docs.get('*', listId).catch(() => null);
+      if (lista) {
+        lista.assigned = lista.assigned ?? {};
+        lista.assigned[idx] = {
+          registry: id, use: useId, assignedAt: null,
+          releasedAt: new Date().toISOString(), motivo: `borrado el registro ${id}`,
+        };
+        await store.docs.put(lista.kind, listId, lista);
+        retirados.push(`posicion ${idx} de ${listId} marcada como gastada`);
+      }
+    }
+  }
   for (const svc of doc.walletRelyingParty.services ?? []) {
     const key = `${id}-${svc.serviceIdentifier}-access`;
     if (await store.keys.get(key).catch(() => null)) {

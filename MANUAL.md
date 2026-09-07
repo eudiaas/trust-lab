@@ -532,12 +532,38 @@ emite no sería quien puede revocarlo.
 Cambiar una posición **no publica nada**: hay que reemitir la lista para que el
 cambio salga.
 
-**Una posición revocada no se reutiliza.** El alta de una RP la salta al
-reservar, igual que salta las que ya tiene otro registro: si se reciclara, el
-certificado que la reciba **nace revocado**, y eso no se nota al emitirlo sino
-cuando alguien lo valida. Pasa en cuanto se borra una RP cuya posición estaba
-marcada. Y si emites contra una posición revocada a propósito —reemitir tras
-levantar una revocación es un flujo real— se avisa en vez de bloquear. La lista se reserva entera de golpe (1024 posiciones) en vez de
+### Cómo se asignan las posiciones
+
+Tres reglas, las tres del borrador **Token Status List** (`draft-ietf-oauth-status-list-21`):
+
+**Se asigna al emitir, no al dar de alta la RP.** *"Each Referenced Token is
+allocated an index during issuance"* (§1). Reservarla en el alta la gastaba
+aunque no llegara a emitirse nada.
+
+**Al azar.** §12.4 lista *"choosing non-sequential, pseudo-random or random
+indices"* entre las mitigaciones contra la observabilidad por terceros. Una
+posición secuencial dice cuántos certificados se emitieron antes que el tuyo, y
+dos contiguas delatan que salieron seguidos — sobre una lista que es pública y
+se descarga entera.
+
+**Nunca se recicla.** §13.3: *"The Status Issuer MUST prevent any unintended
+double allocation"*, porque `uri` + `idx` forman un identificador único (§12.5).
+Una posición liberada —por borrar la RP o por reemitir— queda **gastada** y no
+vuelve al sorteo: reciclarla haría que un certificado nuevo heredara el rastro
+del viejo, y que quien guardara el veredicto antiguo se lo aplicara al nuevo
+titular.
+
+De la tercera sale una cuarta, también normativa: **cada reemisión estrena
+posición**. §13.2 — *"every re-issued Referenced Token MUST have a fresh Status
+List entry in order to prevent the index value from becoming a possible source
+of correlation"*. Emitir tres veces el mismo WRPRC gasta tres posiciones.
+
+El libro de asignaciones vive en la propia status list (`assigned`), no en el
+registro: una posición sigue gastada cuando el registro que la tenía ya no
+existe, y si el rastro viviera ahí se iría con él. Se consulta en `/status`.
+
+Y si emites contra una posición revocada a propósito —reemitir tras levantar una
+revocación es un flujo real— se avisa en vez de bloquear. La lista se reserva entera de golpe (1024 posiciones) en vez de
 crecer con cada revocación, porque una lista que crece filtra cuántos
 certificados hay vivos.
 

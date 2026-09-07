@@ -102,6 +102,21 @@ export async function buildGraph(store) {
     }
     const kind = KIND_OF[doc.kind];
     if (!kind) continue;
+
+    // Una status list no es una lista de confianza y no va en su carril: no
+    // dice en quien se confia, dice de que dejo de confiar QUIEN LA FIRMA. Su
+    // dependencia es su emisor, no el operador de ningun esquema.
+    if (doc.kind === 'token-status-list') {
+      add({
+        id: `status:${doc.id}`, type: 'status', name: doc.id, kind, label: doc.id,
+        url: doc.url ?? null, issuerKey: doc.issuerKey ?? null, issuer: doc.issuer ?? null,
+        size: doc.size ?? 0,
+        gastadas: Object.keys(doc.assigned ?? {}).length,
+        revocadas: Object.values(doc.entries ?? {}).filter((e) => e.status !== 'valid').length,
+      });
+      continue;
+    }
+
     add({
       id: `list:${doc.id}`, type: 'list', name: doc.id, kind, docKind: doc.kind,
       label: doc.id, url: doc.url ?? null,
@@ -139,9 +154,18 @@ export async function buildGraph(store) {
     const kind = KIND_OF[doc.kind];
     if (!kind) continue;
     const a = await store.artifacts.latest(kind, doc.id);
+    const nodeId = doc.kind === 'token-status-list' ? `status:${doc.id}` : `list:${doc.id}`;
+    // La arista sale del emisor declarado aunque no se haya emitido nada aun:
+    // en una status list eso es lo que hay que poder ver — quien podra
+    // revocar — y no solo quien firmo la ultima version.
+    if (doc.kind === 'token-status-list' && doc.issuerKey) {
+      link(nodeId, `key:${doc.issuerKey}`, 'la-revoca');
+    }
     if (!a) continue;
-    nodes.get(`list:${doc.id}`).published = { sequence: a.sequence, nextUpdate: a.nextUpdate ?? null, signer: a.signer ?? null };
-    if (a.signer && nodes.has(`key:${a.signer}`)) link(`list:${doc.id}`, `key:${a.signer}`, 'firmada-por');
+    nodes.get(nodeId).published = { sequence: a.sequence, nextUpdate: a.nextUpdate ?? null, signer: a.signer ?? null };
+    if (a.signer && nodes.has(`key:${a.signer}`) && doc.kind !== 'token-status-list') {
+      link(nodeId, `key:${a.signer}`, 'firmada-por');
+    }
   }
 
   for (const doc of docs) {
@@ -158,7 +182,7 @@ export async function buildGraph(store) {
         if (a.signer) link(`wrprc:${aid}`, `key:${a.signer}`, 'firmado-por');
         const listId = doc.statusList?.listId;
         const idx = doc.statusList?.indexByIntendedUse?.[u.intendedUseIdentifier];
-        if (listId && idx !== undefined) link(`wrprc:${aid}`, `list:${listId}`, 'revocable-en', `#${idx}`);
+        if (listId && idx !== undefined) link(`wrprc:${aid}`, `status:${listId}`, 'revocable-en', `#${idx}`);
       }
     }
   }

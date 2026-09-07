@@ -270,10 +270,44 @@ export async function mintRoleSigner(crypto, ca, { role, subject, validityDays }
   if (!spec) {
     throw new Error(`rol desconocido: ${role} (usa uno de: ${Object.keys(SIGNER_ROLES).join(', ')})`);
   }
-  const leaf = await mintLeaf(crypto, ca, {
-    subject,
-    validityDays: validityDays ?? spec.validityDays,
-    extensions: spec.eku ? [new x509.ExtendedKeyUsageExtension(spec.eku, false)] : [],
-  });
-  return { ...leaf, role, spec };
+  const extensions = spec.eku ? [new x509.ExtendedKeyUsageExtension(spec.eku, false)] : [];
+  const days = validityDays ?? spec.validityDays;
+
+  // Sin CA, autofirmado. No es un atajo: en las listas que publican el
+  // certificado FIRMANTE (TS 119 602 anexos D, E, G, y la AV TL), lo que se
+  // publica es este certificado, asi que no hay ninguna cadena que recorrer y
+  // una jerarquia por encima no aporta nada al veredicto.
+  //
+  // Lo que NO sirve para esto es `mintCa`: da CA:TRUE con KeyUsage
+  // keyCertSign/cRLSign y sin digitalSignature, asi que un verificador que
+  // mire el KeyUsage rechaza la firma. De ahi que esto exista y no baste con
+  // "usa una CA autofirmada".
+  if (!ca) {
+    const leaf = await mintSelfSignedLeaf(crypto, { subject, validityDays: days, extensions });
+    return { ...leaf, role, spec, selfSigned: true };
+  }
+
+  const leaf = await mintLeaf(crypto, ca, { subject, validityDays: days, extensions });
+  return { ...leaf, role, spec, selfSigned: false };
+}
+
+/** Hoja autofirmada: perfil de firma (CA=false, digitalSignature), sin emisor. */
+export async function mintSelfSignedLeaf(crypto, { subject, validityDays = 365, extensions = [] }) {
+  const keys = await crypto.subtle.generateKey(ALG, true, ['sign', 'verify']);
+  const now = new Date();
+  const cert = await x509.X509CertificateGenerator.createSelfSigned({
+    serialNumber: serial(crypto),
+    name: subject,
+    notBefore: new Date(now.getTime() - DAY),
+    notAfter: new Date(now.getTime() + validityDays * DAY),
+    signingAlgorithm: ALG,
+    keys,
+    extensions: [
+      new x509.BasicConstraintsExtension(false, undefined, true),
+      new x509.KeyUsagesExtension(x509.KeyUsageFlags.digitalSignature, true),
+      await x509.SubjectKeyIdentifierExtension.create(keys.publicKey, false, crypto),
+      ...extensions,
+    ],
+  }, crypto);
+  return { keys, cert, pem: cert.toString('pem'), chainPem: [cert.toString('pem')] };
 }

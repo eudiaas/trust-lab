@@ -337,10 +337,12 @@ const server = createServer(async (req, res) => {
     if (path === '/keys/signer') {
       return run(res, '/keys', () =>
         ops.mintSigner(store, crypto, {
-          name: form.get('name')?.trim(), issuer: form.get('issuer'),
+          name: form.get('name')?.trim(), issuer: form.get('issuer') || undefined,
           role: form.get('role'), subject: form.get('subject')?.trim(),
         }),
-        (r) => `${r.spec.label} ${r.name} emitido bajo ${r.issuer}. Publica ese ancla en ${r.spec.lista}.`);
+        (r) => r.selfSigned
+          ? `${r.spec.label} ${r.name} emitido autofirmado. Publica este mismo certificado en ${r.spec.lista}.`
+          : `${r.spec.label} ${r.name} emitido bajo ${r.issuer}. Publica ese ancla en ${r.spec.lista}.`);
     }
 
     if (path === '/keys/ca') {
@@ -355,7 +357,8 @@ const server = createServer(async (req, res) => {
       const doc = await store.docs.get('*', parts[1]);
       const fn = doc?.kind === 'etsi-tl-xml' ? ops.buildAvList : ops.buildLoteList;
       return run(res, '/', () => fn(store, crypto, { id: parts[1], signerName: form.get('signer') }),
-        (r) => `Lista ${r.id} emitida (#${r.sequence}). Publicada en ${r.url}`);
+        (r) => `Lista ${r.id} emitida (#${r.sequence}). Publicada en ${r.url}` +
+          (r.warnings?.length ? `\n⚠ ${r.warnings.join('\n⚠ ')}` : ''));
     }
 
     if (parts[0] === 'status' && parts[2] === 'set') {

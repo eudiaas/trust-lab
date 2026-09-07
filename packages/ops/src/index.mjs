@@ -12,9 +12,10 @@ import { mintWrpac, assertWrpacProfile } from '../../ca/src/wrpac.mjs';
 import { inMemorySigner } from '../../signer/src/index.mjs';
 import { buildTrustedListXml, signTrustedListXml, assertAnnexB } from '../../tl-xml/src/index.mjs';
 import { AV_TL_PROFILE, assertAvProfile } from '../../tl-xml/src/av-profile.mjs';
-import { buildLote, signLoteCompact, verifyLoteCompact, assertLote, LIST_PROFILES } from '../../lote/src/index.mjs';
+import { buildLote, signLoteCompact, verifyLoteCompact, assertLote, assertIdentityNaming, LIST_PROFILES } from '../../lote/src/index.mjs';
 import { buildWrprc, signWrprcCompact, assertWrprc, decodeWRPRC, detectEdition, droppedByEdition } from '../../wrprc/src/index.mjs';
 import { assertRegistry, toWrpacSpec, toWrprcInput, newRegistry } from '../../registry/src/index.mjs';
+import * as x509 from '@peculiar/x509';
 import { signStatusListCompact, readStatus, STATUS_BY_NAME } from '../../status/src/index.mjs';
 import { TrustedListProfiles, loadTrustedList, getTrustAnchors } from '@owf/eudi-tl';
 
@@ -27,6 +28,14 @@ export class OpError extends Error {
 }
 
 const P256 = { name: 'ECDSA', namedCurve: 'P-256' };
+/** El `organizationName` del subject, o null si no lo lleva. */
+export function organizationNameOf(pem) {
+  try {
+    return new x509.Name(new x509.X509Certificate(pem).subject).getField('O')[0] ?? null;
+  } catch {
+    return null;
+  }
+}
 
 async function loadDoc(store, id) {
   const doc = await store.docs.get('*', id);
@@ -80,19 +89,25 @@ export async function mintSigner(store, crypto, { name, issuer, role, subject, v
   if (!spec) {
     throw new OpError(`rol desconocido: ${role}`, [`usa uno de: ${Object.keys(SIGNER_ROLES).join(', ')}`]);
   }
-  if (!issuer) throw new OpError('un firmante siempre cuelga de una CA: falta el emisor');
-  const stored = await loadKey(store, issuer);
-  const { X509Certificate } = await import('@peculiar/x509');
-  const issuerCert = new X509Certificate(stored.crt[0]);
-  if (!issuerCert.getExtension('2.5.29.19')?.ca) {
-    throw new OpError(`"${issuer}" no es una CA: no puede emitir un firmante`);
+  // Sin emisor sale autofirmado, que es legitimo en las listas que publican el
+  // certificado firmante: alli el ancla ES este certificado. Con emisor cuelga
+  // de esa CA, que es lo que hace falta cuando la lista publica la CA (anexo F)
+  // o cuando se quiere poder rotar la hoja sin reemitir la lista.
+  let ca = null;
+  if (issuer) {
+    const stored = await loadKey(store, issuer);
+    const issuerCert = new x509.X509Certificate(stored.crt[0]);
+    if (!issuerCert.getExtension('2.5.29.19')?.ca) {
+      throw new OpError(`"${issuer}" no es una CA: no puede emitir un firmante`);
+    }
+    const caKey = await crypto.subtle.importKey('jwk', stored.key, P256, true, ['sign']);
+    ca = { keys: { privateKey: caKey }, cert: issuerCert, pem: stored.crt[0] };
   }
-  const caKey = await crypto.subtle.importKey('jwk', stored.key, P256, true, ['sign']);
-  const ca = { keys: { privateKey: caKey }, cert: issuerCert, pem: stored.crt[0] };
 
   const material = await mintRoleSigner(crypto, ca, { role, subject, validityDays });
   await saveKeyChain(store, crypto, name, material);
-  return { name, subject: material.cert.subject, role, issuer, spec };
+  return { name, subject: material.cert.subject, role, issuer: issuer ?? null, spec,
+    selfSigned: material.selfSigned };
 }
 
 /** Firmante de listas con el perfil de la clausula 5.7.1, derivado del esquema. */
@@ -153,7 +168,8 @@ export async function buildLoteList(store, crypto, { id, signerName }) {
 
   state.sequenceNumber += 1;
   const lote = buildLote(state);
-  const problems = assertLote(lote, state);
+  const naming = assertIdentityNaming(state, { subjectOf: organizationNameOf });
+  const problems = [...assertLote(lote, state), ...naming.errors];
   if (problems.length) throw new OpError(`la lista no cumple el perfil ${state.loteType}`, problems);
 
   const jws = await signLoteCompact(lote, signer, `${signerName}-${state.sequenceNumber}`);
@@ -167,7 +183,8 @@ export async function buildLoteList(store, crypto, { id, signerName }) {
 
   const profile = LIST_PROFILES[state.loteType];
   return { id, sequence: state.sequenceNumber, artifact, nextUpdate: check.nextUpdate,
-    entities: check.entities, url: state.url, nonNormative: profile?.nonNormative };
+    entities: check.entities, url: state.url, nonNormative: profile?.nonNormative,
+    warnings: naming.warnings };
 }
 
 /** Cambia una posicion de la status list. NO publica: hay que reemitir. */

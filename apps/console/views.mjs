@@ -278,9 +278,12 @@ export function keysPage({ keys, cas = [], roles = {}, schemes, flash }) {
     <div class="card">
       <h3>Firmante de credenciales o atestaciones</h3>
       <div class="meta">El Document Signer del PID, el que firma los registration certificates
-      y los de Wallet Instance Attestation / Key Attestation. Siempre cuelga de una CA: lo que
-      hace util a este certificado no es su perfil, es que <strong>su ancla sea la que publica
-      la lista</strong> correspondiente.</div>
+      y los de Wallet Instance Attestation / Key Attestation. Lo que hace util a este certificado
+      no es su perfil, es que <strong>su ancla sea la que publica la lista</strong> correspondiente.
+      <br>En las listas que publican el certificado <em>firmante</em> (PID, wallet, WRPRC y la AV TL)
+      el ancla es este mismo certificado, asi que <strong>autofirmado vale</strong> y no hace falta
+      CA. Cuelgalo de una CA si quieres poder rotarlo sin reemitir la lista — o si va a la lista de
+      access certificates, que publica la CA.</div>
       <form method="post" action="/keys/signer">
         <div class="row">
           <input type="text" name="name" placeholder="nombre" required>
@@ -289,7 +292,10 @@ export function keysPage({ keys, cas = [], roles = {}, schemes, flash }) {
               .map(([id, r]) => `<option value="${esc(id)}">${esc(r.label)} → ${esc(r.lista)}</option>`)
               .join('')}
           </select>
-          <select name="issuer">${cas.map((c) => `<option>${esc(c)}</option>`).join('')}</select>
+          <select name="issuer">
+            <option value="">— autofirmado (sin CA) —</option>
+            ${cas.map((c) => `<option>${esc(c)}</option>`).join('')}
+          </select>
         </div>
         <div class="row" style="margin-top:.5rem">
           <input type="text" name="subject" placeholder="C=ES, O=Lab PID Provider, CN=Lab PID DS 01"

@@ -98,6 +98,7 @@ export const LIST_PROFILES = {
     loteType: 'http://uri.etsi.org/19602/LoTEType/EUPubEAAProvidersList',
     svc: SVC.PubEAA,
     identityRef: 'signing', // anexo H
+    namingMandatory: true, // anexo H: "shall have the organizationName ... shall strictly match"
     statusDeterminationApproach: 'http://uri.etsi.org/19602/PubEAAProvidersList/StatusDetn/EU',
     schemeTypeCommunityRules: 'http://uri.etsi.org/19602/PubEAAProvidersList/schemerules/EU',
     serviceStatuses: [
@@ -248,4 +249,46 @@ export function assertLote(lote, state) {
     }
   }
   return problems;
+}
+
+
+/**
+ * Cláusula 6.6.3: el `organizationName` del certificado publicado debería
+ * coincidir exactamente con el nombre de la entidad (`TEName`).
+ *
+ * Es **should** en la cláusula general —así que en los anexos D a G es un
+ * aviso— y **shall** en el anexo H, que lo repite con esas palabras. La
+ * diferencia se conserva porque es la que hay: convertir el should en error
+ * bloquearía listas conformes, y rebajar el shall a aviso dejaría pasar una que
+ * no lo es.
+ *
+ * Lo que la norma persigue con esto es que el nombre publicado y el nombre
+ * certificado no puedan divergir: sin la comprobación, la lista puede decir
+ * "Banco X" sobre un certificado emitido a otro.
+ */
+export function assertIdentityNaming(state, { subjectOf }) {
+  const mandatory = !!LIST_PROFILES[state.loteType]?.namingMandatory;
+  const errors = [];
+  const warnings = [];
+
+  for (const [i, p] of (state.providers ?? []).entries()) {
+    for (const field of ['issuanceCertPem', 'revocationCertPem']) {
+      const pem = p[field];
+      if (!pem) continue;
+      const o = subjectOf(pem);
+      const donde = `providers[${i}].${field}`;
+      if (o === null) {
+        (mandatory ? errors : warnings).push(
+          `6.6.3 — ${donde}: el certificado no lleva organizationName en el subject`,
+        );
+        continue;
+      }
+      if (o !== p.name) {
+        (mandatory ? errors : warnings).push(
+          `6.6.3 — ${donde}: organizationName "${o}" no coincide con el nombre de la entidad "${p.name}"`,
+        );
+      }
+    }
+  }
+  return { errors, warnings };
 }

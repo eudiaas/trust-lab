@@ -57,12 +57,19 @@ const cmds = {
     for (const w of r.warnings) console.warn('  ⚠ ' + w);
   },
 
-  // trustlab mint-signer <ca> <nombre> <rol> "<DN>"
+  // trustlab mint-signer <ca|-> <nombre> <rol> "<DN>"
   //   roles: mdoc-ds | pid-ds | wrprc | wia | key-attestation
+  //   con "-" como emisor sale autofirmado
   async 'mint-signer'([issuer, name, role, subject]) {
-    const r = await ops.mintSigner(store, crypto, { issuer, name, role, subject });
+    const r = await ops.mintSigner(store, crypto, {
+      issuer: issuer && issuer !== '-' ? issuer : undefined, name, role, subject,
+    });
     console.log(`${r.spec.label} ${r.name}: ${r.subject}`);
-    console.log(`  cuelga de ${r.issuer} · publicar ese ancla en ${r.spec.lista}`);
+    console.log(
+      r.selfSigned
+        ? `  autofirmado · publicar este mismo certificado en ${r.spec.lista}`
+        : `  cuelga de ${r.issuer} · publicar ese ancla en ${r.spec.lista}`,
+    );
     console.log(`  ${r.spec.nota}`);
   },
 
@@ -133,6 +140,7 @@ const cmds = {
     console.log(`lista ${r.id} #${r.sequence} → ${where(r)}`);
     console.log(`  perfil ${doc.loteType} · tipos de servicio ${profile?.svc}/{Issuance,Revocation}`);
     if (r.nonNormative) console.log(`  ⚠ ${r.nonNormative}`);
+    for (const w of r.warnings ?? []) console.log(`  ⚠ ${w}`);
     console.log(`  JWS verificado · nextUpdate ${r.nextUpdate} · ${r.entities} entidad(es)`);
     console.log(`  publicar en: ${r.url}`);
   },

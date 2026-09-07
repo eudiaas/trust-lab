@@ -302,10 +302,40 @@ La herramienta aplica esa regla sola —`identityRef` en cada perfil de
 `packages/lote`— así que puedes nombrar la clave que quieras y guarda la que
 toca. La página de contenido lo dice en cada lista.
 
-Una regla más de la cláusula 6.6.3, **SHOULD** y no comprobada aún: el
-`organizationName` del certificado debería coincidir exactamente con el nombre
-de la entidad (`TEName`). En los anexos H e I es **SHALL**; en D–G solo aplica
-la general.
+**El nombre publicado y el certificado no pueden divergir.** La cláusula 6.6.3
+pide que el `organizationName` del certificado coincida exactamente con el
+nombre de la entidad (`TEName`); sin eso, la lista puede decir «Banco X» sobre
+un certificado emitido a otro. Se comprueba al emitir, y con la fuerza que le da
+la norma: **aviso** en los anexos D–G, donde es *should*, y **error** en el
+anexo H, que lo repite como *shall*.
+
+### ¿Autofirmado o colgando de una CA?
+
+Depende solo de qué publica la lista, y ya está en la tabla de arriba:
+
+| | ¿Sirve autofirmado? |
+|---|---|
+| `wrpac-lab` (anexo F) | **No.** La lista publica la CA emisora, y un access certificate es un X.509 que alguien tiene que firmar. Hace falta una CA de verdad — autofirmada como raíz, eso sí. |
+| las otras cuatro | **Sí.** El ancla publicada *es* ese certificado, así que no hay cadena que recorrer y una jerarquía por encima no añade nada al veredicto. |
+
+```bash
+node apps/cli/index.mjs mint-signer - wrprc-solo wrprc "C=ES, O=Lab RC Provider, CN=Firmante"
+```
+
+El `-` en lugar de la CA lo emite autofirmado. En la consola es la opción
+*«— autofirmado (sin CA) —»* del desplegable.
+
+⚠ **Lo que NO vale es usar `mint-ca` como firmante.** Produce `CA:TRUE` con
+`KeyUsage` `keyCertSign, cRLSign` y **sin `digitalSignature`**: un verificador
+que mire el `KeyUsage` rechaza la firma. Por eso `mint-signer` sin CA existe, en
+vez de decirte «usa una CA autofirmada».
+
+**Cuándo interesa la CA de todas formas**, aunque la lista no la exija: para
+poder **rotar** el certificado firmante sin reemitir la lista. Con el firmante
+publicado directamente, cada rotación obliga a reemitir; con una CA por encima…
+tampoco sirve, porque estas cuatro listas publican el firmante, no la CA. Así
+que en la práctica, **para las cuatro, autofirmado es la opción simple y no
+pierdes nada**; la jerarquía solo paga en `wrpac-lab`.
 
 ### 5.4 Firmar y publicar las listas
 
@@ -631,7 +661,7 @@ descubre siguiendo las listas.
 mint-ca <nombre> "<DN>"                             CA raíz autofirmada
 mint-leaf <ca> <nombre> "<DN>"                      hoja genérica
 mint-tl-signer <nombre> <esquema>                   firmante de listas (5.7.1)
-mint-signer <ca> <nombre> <rol> "<DN>"              firmante de credenciales
+mint-signer <ca|-> <nombre> <rol> "<DN>"            firmante ("-" = autofirmado)
       roles: mdoc-ds | pid-ds | wrprc | wia | key-attestation
 mint-wrpac <ca> <registro> <servicio> [nombre]      access certificate
 

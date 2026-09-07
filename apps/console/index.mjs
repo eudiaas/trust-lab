@@ -198,6 +198,13 @@ const server = createServer(async (req, res) => {
     if (parts[0] === 'lists' && parts.length === 2 && req.method === 'GET') {
       const doc = await store.docs.get('*', parts[1]);
       if (!doc) return send(res, 404, 'no existe');
+      // Una status list no tiene miembros que elegir: lo que se edita en ella
+      // son posiciones de revocacion, y eso vive en /status. Antes esta ruta le
+      // pintaba la pagina de "que certificados contiene" —vacia, y citando una
+      // norma que no le aplica— porque comparte el lifecycle de publicacion.
+      if (doc.kind === 'token-status-list') {
+        return send(res, 303, '', { Location: '/status' });
+      }
       const item = (await readiness(store)).find((i) => i.id === parts[1]);
       return send(res, 200, views.listMembersPage({
         id: parts[1], item, doc, ...(await ops.listCandidates(store, parts[1])),

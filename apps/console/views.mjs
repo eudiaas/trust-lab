@@ -479,31 +479,53 @@ export function statusPage({ lists, signers, flash }) {
 }
 
 export function listsPage({ items, flash }) {
-  return layout({
-    title: 'Listas',
-    path: '/lists', flash,
-    body: `<h1>Listas</h1>
-    <p class="lead">El estado de cada lista es un documento. Editarlo no publica nada.</p>
-    <table><tr><th>Lista</th><th>Tipo</th><th>Entradas</th><th>Publicada</th><th></th></tr>
-    ${items
-      .map(
-        (i) => `<tr><td><a href="/lists/${encodeURIComponent(i.id)}">${esc(i.title)}</a>
+  // Una status list se publica igual que una lista de confianza, pero no dice
+  // en quien se confia: dice que certificados se han revocado. Mezclarlas en
+  // una tabla hacia que la columna "Entradas" significara dos cosas —
+  // proveedores en unas filas, posiciones revocadas en otras.
+  const confianza = items.filter((i) => i.kind !== 'token-status-list');
+  const revocacion = items.filter((i) => i.kind === 'token-status-list');
+
+  const fila = (i, unidad) => `<tr><td><a href="${
+    i.kind === 'token-status-list' ? '/status' : `/lists/${encodeURIComponent(i.id)}`
+  }">${esc(i.title)}</a>
         <div class="meta mono">${esc(i.id)}</div></td>
-        <td class="meta">${esc(i.type)}</td><td>${i.entries}</td>
+        <td class="meta">${esc(i.type)}</td><td>${i.entries} ${esc(unidad)}</td>
         <td>${i.published ? `#${i.published.sequence}` : '—'} ${badge(i)}</td>
-        <td><a href="/lists/${encodeURIComponent(i.id)}">Contenido</a>
+        <td>${
+          i.kind === 'token-status-list'
+            ? `<a href="/status">Revocacion</a>`
+            : `<a href="/lists/${encodeURIComponent(i.id)}">Contenido</a>`
+        }
         <a href="/docs/${encodeURIComponent(i.id)}" style="margin-left:.6rem">JSON</a>
         ${
           i.published
             ? delButton(`/delete/unpublish/${encodeURIComponent(i.id)}`, 'Retirar',
                 `Retira la version publicada de ${i.id}. ${i.url ?? ''} deja de servirse hasta que se reemita. El documento no se toca.`)
             : ''
-        }</td></tr>`,
-      )
-      .join('')}</table>`,
+        }</td></tr>`;
+
+  return layout({
+    title: 'Listas',
+    path: '/lists', flash,
+    body: `<h1>Listas</h1>
+    <p class="lead">El estado de cada lista es un documento. Editarlo no publica nada.</p>
+
+    <h2>Listas de confianza</h2>
+    <p class="meta">Dicen en quien se confia: quien puede emitir cada cosa.</p>
+    <table><tr><th>Lista</th><th>Tipo</th><th>Contenido</th><th>Publicada</th><th></th></tr>
+    ${confianza.map((i) => fila(i, 'entrada(s)')).join('')}</table>
+
+    <h2 style="margin-top:2rem">Revocacion</h2>
+    <p class="meta">No dice en quien se confia, sino que se ha <strong>dejado</strong> de
+    confiar. Cada registration certificate lleva dentro una posicion de esta lista
+    (<span class="mono">status.status_list</span>, TS 119 475), asi que sin ella "certificado
+    revocado" seria una frase y no algo comprobable. Se publica igual que las demas, pero su
+    contenido se edita en <a href="/status">Revocacion</a>.</p>
+    <table><tr><th>Lista</th><th>Tipo</th><th>Contenido</th><th>Publicada</th><th></th></tr>
+    ${revocacion.map((i) => fila(i, 'revocada(s)')).join('')}</table>`,
   });
 }
-
 
 /**
  * El grafo dibujado, con la lista de cadenas rotas debajo.

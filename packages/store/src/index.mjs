@@ -16,4 +16,5 @@ export { fileStore } from './file.mjs';
 export { memoryStore } from './memory.mjs';
 export { sqlStore, pgQuery, pgliteQuery, SCHEMA_SQL } from './sql.mjs';
 export { openStore } from './open.mjs';
+export { seedIfEmpty } from './seed.mjs';
 export { encryptedKeys, parseKeyMaterial, KeyEncryptionRequiredError } from './crypto.mjs';

@@ -13,7 +13,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { Crypto } from '@peculiar/webcrypto';
 import { cryptoProvider } from '@peculiar/x509';
-import { openStore } from '../../packages/store/src/index.mjs';
+import { openStore, seedIfEmpty } from '../../packages/store/src/index.mjs';
 import * as ops from '../../packages/ops/src/index.mjs';
 import { assertRegistry } from '../../packages/registry/src/index.mjs';
 import { readiness, rpReadiness, tlsoCandidates } from './readiness.mjs';
@@ -255,6 +255,13 @@ const server = createServer(async (req, res) => {
     send(res, 500, `<pre>${err.message}</pre>`);
   }
 });
+
+// Solo la consola siembra: es la superficie de escritura. El publisher sirve lo
+// que haya, y si no hay nada, no hay nada — no es su papel crear estado.
+const seed = await seedIfEmpty(store, ROOT);
+if (seed.seeded.length) {
+  console.log(`siembra inicial: ${seed.seeded.length} documento(s) — ${seed.seeded.join(', ')}`);
+}
 
 server.listen(PORT, () => {
   console.log(`consola escuchando en :${PORT} · almacen ${store.kind} · escritura autenticada`);

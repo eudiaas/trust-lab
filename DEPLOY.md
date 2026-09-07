@@ -26,34 +26,56 @@ clave privada aunque lo comprometan.
    pone por defecto en las variables referenciadas. La pública pasa por un proxy
    con TLS propio y da errores de certificado.
 
-## 2. Servicio `trust-lab-publisher`
+## 2. Qué servicio arranca: `TRUST_LAB_APP`
+
+Railway construye con **Railpack**, que busca el comando de arranque en el
+`start` del `package.json` — no en `railway.json` salvo que le indiques el
+fichero. Con dos servicios en un mismo repo, el `start` elige por variable:
+
+```json
+"start": "node apps/${TRUST_LAB_APP:-publisher}/index.mjs"
+```
+
+Así que basta con poner `TRUST_LAB_APP=console` en el servicio de la consola.
+El publisher no necesita nada: es el valor por defecto.
+
+Los `railway.json` siguen ahí con el `startCommand` explícito, por si prefieres
+apuntar el campo *Config as code* de cada servicio a su fichero. Las dos vías
+funcionan; la de la variable funciona **aunque no configures nada**, que es
+justo lo que fallaba en el primer intento.
+
+## 3. Servicio `trust-lab-publisher`
 
 | Ajuste | Valor |
 |---|---|
 | Root Directory | *(raíz del repo)* |
-| Config as code | `apps/publisher/railway.json` |
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
+| `TRUST_LAB_APP` | *(nada: por defecto es el publisher)* |
 | `MAX_CACHE_SECONDS` | opcional (3600) |
 | Dominio | **público**: es lo que descargan las wallets |
 
-## 3. Servicio `trust-lab-console`
+## 4. Servicio `trust-lab-console`
 
 | Ajuste | Valor |
 |---|---|
 | Root Directory | *(raíz del repo)* |
-| Config as code | `apps/console/railway.json` |
+| `TRUST_LAB_APP` | **`console`** |
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
 | `TRUST_LAB_KEY` | **32 bytes**: `openssl rand -hex 32` |
 | `CONSOLE_PASSWORD` | sin ella el servicio no arranca |
 | `CONSOLE_SECRET` | opcional; si falta, las sesiones caducan al reiniciar |
 | Dominio | privado o con acceso restringido |
 
+> Railpack instala también las dependencias de desarrollo (PGlite, 26 MB). Si
+> quieres la imagen mínima, añade `NPM_CONFIG_OMIT=dev`. No es necesario: el
+> arranque no depende de ellas — está probado con y sin.
+
 ⚠ **`TRUST_LAB_KEY` no se rota ni se pierde.** Cifra las claves privadas de las
 CAs y de los firmantes de listas. Sin ella no se puede reemitir nada, y como el
 pin de un firmante *es* su clave, perderla invalida todo lo publicado para
 cualquiera que lo tuviera pineado. Guárdala fuera de Railway también.
 
-## 4. El dominio, antes de emitir nada
+## 5. El dominio, antes de emitir nada
 
 Las URLs de publicación viajan **dentro de artefactos firmados**: el `sub` de
 cada status list, el puntero de la AV TL a sí misma, el `status.status_list.uri`
@@ -63,7 +85,7 @@ las haya pineado.
 Así que primero fija el dominio del publisher, y luego pon esa base en el campo
 `url` de cada documento de estado (`/lists` → Editar en la consola).
 
-## 5. Comprobación
+## 6. Comprobación
 
 ```bash
 curl -s https://<publisher>/            # índice de lo publicado
@@ -78,8 +100,9 @@ botón de emitir.
 
 ## Lo que está probado y lo que no
 
-- ✅ Instalación de producción (`npm ci --omit=dev`) y arranque de los dos
-  servicios sin dependencias de desarrollo.
+- ✅ Instalación de producción (`npm ci --omit=dev`) y también completa (como la
+  hace Railpack), con arranque de los dos servicios por `npm start` en ambos
+  casos.
 - ✅ El esquema SQL y todas las operaciones contra Postgres real (PGlite, el
   motor compilado a WASM: mismo SQL, mismo comportamiento).
 - ✅ El rechazo a arrancar en Railway sin `DATABASE_URL`, y sin

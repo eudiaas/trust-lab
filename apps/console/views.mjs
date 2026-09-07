@@ -208,11 +208,29 @@ export function rpsPage({ rps, statusLists = [], flash }) {
 }
 
 export function keysPage({ keys, signers, schemes, flash }) {
+  const ROLE_PILL = {
+    CA: 'dim', 'firmante de listas': 'ok', 'access certificate': 'ok',
+    hoja: 'dim', 'sin certificado': 'bad', ilegible: 'bad',
+  };
   const rows = keys
     .map(
-      (k) => `<tr><td class="mono">${esc(k.name)}</td><td class="mono" style="color:var(--dim)">${esc(k.subject ?? '')}</td>
+      (k) => `<tr><td class="mono">${esc(k.name)}</td>
+      <td><span class="pill ${ROLE_PILL[k.role] ?? 'dim'}">${esc(k.role ?? '')}</span>${
+        k.policy ? ` <span class="meta mono">${esc(k.policy)}</span>` : ''
+      }${k.selfSigned ? ' <span class="meta">autofirmado</span>' : ''}</td>
+      <td class="mono" style="color:var(--dim)">${esc(k.subject ?? '')}</td>
       <td>${k.encrypted ? '<span class="pill ok">cifrada</span>' : '<span class="pill warn">en claro</span>'}</td>
-      <td>${k.tlso ? (k.tlso.errors.length ? `<span class="pill bad">no cumple 5.7.1</span>` : '<span class="pill ok">TLSO valido</span>') : ''}</td>
+      <td>${
+        k.expired
+          ? `<span class="pill bad">caducado ${esc(k.notAfter ?? '')}</span>`
+          : `<span class="meta mono">${esc(k.notAfter ?? '')}</span>`
+      }${
+        k.tlso
+          ? k.tlso.errors.length
+            ? ' <span class="pill bad">no cumple 5.7.1</span>'
+            : ' <span class="pill ok">5.7.1</span>'
+          : ''
+      }</td>
       <td class="meta">${keyLinks(k.name)}</td></tr>`,
     )
     .join('');
@@ -225,7 +243,13 @@ export function keysPage({ keys, signers, schemes, flash }) {
     <strong>si se puede descargar</strong> desde aqui: un access certificate que no sale de la fabrica
     no le sirve a nadie. Las descargas marcadas con 🔑 contienen la clave privada y quedan registradas
     en el log del servicio. El publisher no tiene ninguna de estas rutas.</p>
-    <table><tr><th>Nombre</th><th>Subject</th><th>Reposo</th><th>Perfil</th><th>Descargar</th></tr>${rows}</table>
+    <table><tr><th>Nombre</th><th>Que es</th><th>Subject</th><th>Reposo</th><th>Caduca</th><th>Descargar</th></tr>${rows}</table>
+    <p class="note">Cada fila es un <strong>par clave + certificado</strong> bajo un nombre: el
+    almacen no guarda certificados por un lado y claves por otro. Lo que la fila <em>es</em>
+    —CA, firmante de listas, access certificate o una hoja cualquiera— no lo dice el nombre, que
+    lo pone quien la emite, sino las extensiones del certificado: BasicConstraints para la CA,
+    el EKU <span class="mono">id-tsl-kp-tslSigning</span> para el firmante y el OID de politica
+    de TS 119 411-8 para el access certificate.</p>
 
     <h2>Emitir</h2>
     <div class="card">

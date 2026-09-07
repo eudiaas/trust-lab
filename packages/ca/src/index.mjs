@@ -2,6 +2,7 @@
 // Sin fs, sin process.env (contrato 1).
 import 'reflect-metadata';
 import * as x509 from '@peculiar/x509';
+import { WRPAC_POLICY } from './wrpac.mjs';
 
 const ALG = { name: 'ECDSA', namedCurve: 'P-256', hash: 'SHA-256' };
 const DAY = 86_400_000;
@@ -150,4 +151,47 @@ export function assertTlsoProfile(certPem, { schemeOperatorName, territory } = {
 
   if (!cert.getExtension('2.5.29.14')) problems.push('5.7.1: falta SubjectKeyIdentifier');
   return { errors: problems, warnings };
+}
+
+/**
+ * Que es una entrada del almacen de claves, leido del propio certificado.
+ *
+ * El almacen guarda pares clave+certificado bajo un nombre, y el nombre lo
+ * pone quien la emite: mirando la lista no se distingue una CA de un firmante
+ * de listas de un access certificate. Aqui la respuesta sale de las
+ * extensiones, que es donde esta de verdad.
+ */
+export function describeKey(certPem) {
+  let cert;
+  try {
+    cert = new x509.X509Certificate(certPem);
+  } catch {
+    return { role: 'ilegible' };
+  }
+  const bc = cert.getExtension('2.5.29.19');
+  const eku = cert.getExtension('2.5.29.37')?.usages ?? [];
+  const policies = cert.getExtension('2.5.29.32');
+  // El OID de politica es lo unico que distingue un access certificate de una
+  // hoja cualquiera: TS 119 411-8 le asigna cuatro, y `mintWrpac` pone uno.
+  const wrpacOid = Object.entries(WRPAC_POLICY).find(([, oid]) =>
+    (policies?.policies ?? []).some((p) => (p.policyIdentifier ?? p) === oid),
+  );
+
+  const role = bc?.ca
+    ? 'CA'
+    : eku.includes(OID_TSL_SIGNING)
+      ? 'firmante de listas'
+      : wrpacOid
+        ? 'access certificate'
+        : 'hoja';
+
+  return {
+    role,
+    ca: !!bc?.ca,
+    policy: wrpacOid?.[0],
+    selfSigned: cert.subject === cert.issuer,
+    issuer: cert.issuer,
+    notAfter: cert.notAfter?.toISOString().slice(0, 10),
+    expired: cert.notAfter ? cert.notAfter < new Date() : null,
+  };
 }

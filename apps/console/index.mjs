@@ -16,6 +16,7 @@ import { cryptoProvider } from '@peculiar/x509';
 import { openStore, seedIfEmpty } from '../../packages/store/src/index.mjs';
 import * as ops from '../../packages/ops/src/index.mjs';
 import { assertRegistry } from '../../packages/registry/src/index.mjs';
+import { describeKey, assertTlsoProfile } from '../../packages/ca/src/index.mjs';
 import { readiness, rpReadiness, tlsoCandidates } from './readiness.mjs';
 import * as views from './views.mjs';
 
@@ -136,7 +137,19 @@ const server = createServer(async (req, res) => {
       const keys = [];
       for (const name of await store.keys.list()) {
         const doc = await raw.get(name);
-        keys.push({ name, subject: doc?.subject, encrypted: !!doc?.keyEnc, tlso: null });
+        // El certificado se lee SIN descifrar la privada: el material publico
+        // se guarda en claro justamente para esto.
+        const cert = doc?.crt?.[0];
+        keys.push({
+          name, subject: doc?.subject, encrypted: !!doc?.keyEnc,
+          ...(cert ? describeKey(cert) : { role: 'sin certificado' }),
+          // El veredicto 5.7.1 solo es una respuesta util para un firmante:
+          // decir que un access certificate "no cumple 5.7.1" seria ruido, no
+          // un hallazgo — no pretende cumplirlo.
+          tlso: cert && describeKey(cert).role === 'firmante de listas'
+            ? assertTlsoProfile(cert, {}, { checkNaming: false })
+            : null,
+        });
       }
       const schemes = (await store.docs.list('*')).filter((d) => d.kind === 'etsi-tl-xml');
       return send(res, 200, views.keysPage({ keys, signers: [], schemes, flash }));

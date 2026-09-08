@@ -621,7 +621,7 @@ of correlation"*. Emitir tres veces el mismo WRPRC gasta tres posiciones.
 
 El libro de asignaciones vive en la propia status list (`assigned`), no en el
 registro: una posición sigue gastada cuando el registro que la tenía ya no
-existe, y si el rastro viviera ahí se iría con él. Se consulta en `/status`.
+existe, y si el rastro viviera ahí se iría con él. Se consulta en `/wrprc`.
 
 Y si emites contra una posición revocada a propósito —reemitir tras levantar una
 revocación es un flujo real— se avisa en vez de bloquear. La lista se reserva entera de golpe (1024 posiciones) en vez de

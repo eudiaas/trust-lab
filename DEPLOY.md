@@ -108,9 +108,34 @@ botón de emitir.
   motor compilado a WASM: mismo SQL, mismo comportamiento).
 - ✅ El rechazo a arrancar en Railway sin `DATABASE_URL`, y sin
   `CONSOLE_PASSWORD` en la consola.
-- ⚠ CI **no bloquea el despliegue**: Railway despliega al empujar a `main`, no
-  al terminar el workflow. Si se quiere que espere, hay que activar *Wait for
-  CI* en el servicio.
+- ⚠ Que CI bloquee o no el despliegue depende de *Wait for CI* (ver abajo). Sin
+  él, Railway despliega al empujar a `main` sin mirar el workflow.
 - ⚠ **No probado**: el driver `pg` contra un servidor Postgres real y la
   resolución de red de Railway. Es el único tramo que sólo se puede verificar
   desplegando.
+
+## Que el despliegue espere a CI
+
+*Wait for CI* es un ajuste **por servicio** y sólo se toca en el panel: no está
+en `railway.json` ni en la CLI. Hay que activarlo en **los dos** servicios —
+`trust-lab-console` y `trust-lab-publisher`—, porque cada uno despliega por su
+cuenta desde el mismo repo.
+
+En cada servicio: **Settings → Source** (la sección del repo de GitHub) →
+activar **Wait for CI**. A partir de ahí, un push a `main` deja el despliegue en
+estado *WAITING* hasta que el check suite de ese commit termina, y sólo sale
+adelante si termina en verde.
+
+Dos cosas que conviene saber antes de activarlo:
+
+- **Mira todos los check suites del commit, no sólo el nuestro.** Si otra
+  GitHub App instalada en el repo publica un check que falla —o que no termina
+  nunca— el despliegue se queda esperando aunque `ci.yml` esté verde. Si un
+  despliegue se queda en *WAITING*, lo primero es abrir el commit en GitHub y
+  mirar la lista entera de checks.
+- **Un run cancelado tampoco es un veredicto.** Por eso el workflow no cancela
+  runs en `main` (sólo en las PR): un `cancel-in-progress` ahí dejaría commits
+  sin conclusión y despliegues esperando algo que ya no va a llegar.
+
+La salida de emergencia es desactivarlo en el servicio y volver a empujar; el
+despliegue sale inmediatamente.

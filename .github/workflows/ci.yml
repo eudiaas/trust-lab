@@ -1,9 +1,10 @@
 # CI: las seis suites, en las dos versiones de Node que el proyecto declara
 # soportar, mas un arranque con la instalacion de produccion.
 #
-# Nota sobre el despliegue: Railway despliega al empujar a `main`, no cuando
-# esto pasa. CI aqui informa, no bloquea — si se quiere que bloquee, hay que
-# activar "Wait for CI" en el servicio de Railway.
+# Nota sobre el despliegue: si "Wait for CI" NO esta activado en el servicio de
+# Railway, esto informa pero no bloquea — Railway despliega al empujar a `main`
+# sin esperar al workflow. Con "Wait for CI" activado, el despliegue espera al
+# check suite de ese commit; ver DEPLOY.md.
 name: CI
 
 on:
@@ -16,10 +17,16 @@ on:
 permissions:
   contents: read
 
-# Un empujon nuevo cancela el run anterior de la misma rama.
+# Un empujon nuevo cancela el run anterior... pero solo en las PR.
+#
+# En `main` no, y es a proposito: con "Wait for CI" activado en Railway, el
+# despliegue espera al *check suite* del commit, y un run CANCELADO no es un
+# veredicto — deja el commit sin conclusion y el despliegue esperando algo que
+# ya no va a llegar. Cancelar ahi ahorraria un minuto de runner a cambio de un
+# despliegue que no sale.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:

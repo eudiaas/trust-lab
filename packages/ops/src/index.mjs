@@ -671,6 +671,7 @@ const DEP_LABEL = {
   'firmada-por': 'esta firmada por esta clave',
   'firmado-por': 'esta firmado por esta clave',
   'revocable-en': 'se revoca en',
+  'la-revoca': 'se revoca con esta clave',
   'access-cert': 'usa esta clave como access certificate',
   de: 'pertenece a',
 };

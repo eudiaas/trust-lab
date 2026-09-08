@@ -125,6 +125,29 @@ Dos comprobaciones corren en cada `build-list` y **abortan la emisión** si fall
 No son decorativas: firmar la lista con una CA normal, o cambiar un URI del
 perfil AV, aborta la emisión con el detalle en pantalla.
 
+### Las cuatro suites
+
+```bash
+npm test
+```
+
+| Suite | Qué cubre |
+|---|---|
+| `packages/store/test/conformance.mjs` | los tres adaptadores de almacén responden igual, SQL incluido (PGlite) |
+| `test/signatures.mjs` | todo lo que se firma se relee: WRPRC y status list verifican contra el certificado de su firmante |
+| `test/views.mjs` | cada vista de la consola se renderiza sin referencias rotas |
+| `test/cli.mjs` | el CLI de punta a punta: monta un marco entero sobre una raíz temporal y comprueba lo emitido |
+
+La última no comprueba que el CLI imprima lo que imprime, sino las propiedades
+que cuestan un despliegue: que cada lista publique el certificado que le toca
+(la AV TL el DS, el anexo F la CA emisora), que el `idx` que viaja firmado en el
+WRPRC sea el que se reservó, que reemitir mueva la posición y que una lista
+agotada se niegue **antes que reciclar** una liberada, que un cambio de estado
+no se publique hasta reemitir la lista, y que un incumplimiento de perfil salga
+como mensaje y no como pila. Corre sobre una copia temporal de `apps/`,
+`packages/` y `state/`, con `DATABASE_URL` y `TRUST_LAB_PGLITE` borradas del
+entorno: no toca ni el repo ni ninguna base de datos.
+
 ## Por qué la lista de laboratorio copia el perfil AV al pie de la letra
 
 Podría llevar un nombre de esquema propio que gritara "esto es una prueba". No

@@ -29,9 +29,12 @@ export const STATUS_BY_NAME = {
 export function buildStatusList(state) {
   const bits = state.bits ?? 1;
   const values = new Array(state.size ?? 1024).fill(StatusType.Valid);
-  for (const [idx, entry] of Object.entries(state.entries ?? {})) {
-    const value = STATUS_BY_NAME[entry.status];
-    if (value === undefined) throw new Error(`estado desconocido en la posición ${idx}: ${entry.status}`);
+  // `positions` es el mapa unificado; `entries` es el formato antiguo, cuando
+  // el estado y el libro de asignaciones eran dos mapas distintos.
+  for (const [idx, entry] of Object.entries(state.positions ?? state.entries ?? {})) {
+    const nombre = entry.status ?? 'valid';
+    const value = STATUS_BY_NAME[nombre];
+    if (value === undefined) throw new Error(`estado desconocido en la posición ${idx}: ${nombre}`);
     values[Number(idx)] = value;
   }
   return new StatusList(values, bits);

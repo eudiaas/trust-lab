@@ -588,7 +588,7 @@ los firmantes de listas ni siquiera se ofrecen como emisores.
 Al emitir un WRPRC se avisa si la lista a la que apunta la firma otro: quien lo
 emite no sería quien puede revocarlo.
 
-> Consola: **Revocación**.
+> Consola: **Registration certificates**.
 
 Cambiar una posición **no publica nada**: hay que reemitir la lista para que el
 cambio salga.
@@ -710,6 +710,12 @@ pinta son la misma.
 | un WRPRC emitido | `/rps/<rp>` → Borrar | `delete-wrprc <id>` |
 | una entrada de una lista | `/lists/<lista>` → desmarcar | `remove-provider <lista> <índice\|nombre>` |
 | lo publicado de una lista | `/lists` → Retirar | `unpublish <lista>` |
+
+Las posiciones de una status list —ocupante y estado— viven en **un solo mapa**
+(`positions`). Fueron dos durante un tiempo, `entries` para el estado y
+`assigned` para el libro de asignaciones, y nada las obligaba a estar separadas:
+una posición tiene un ocupante y un estado, no son dos cosas. Los documentos
+antiguos se leen mezclando ambos y se reescriben unificados al tocarlos.
 
 El aviso dice **qué se rompe, con nombres**:
 
@@ -844,14 +850,14 @@ descubre siguiendo las listas.
 
 | Ruta | Qué hay |
 |---|---|
-| `/` | dashboard: el grafo de dependencias, qué se puede emitir y qué falta |
+| `/` | resumen del marco: qué falta y dónde se arregla. Solo informa |
 | `/lists` | las listas, su estado de publicación y el acceso a cada una |
 | `/lists/:id` | qué contiene una lista: selección de certificados y emisión |
 | `/keys` | pares clave+certificado: qué es cada uno, caducidad y descargas; emisión de CAs, del firmante de listas y de los firmantes de credenciales |
 | `/rps` | relying parties, alta de nuevas |
 | `/rps/:id` | servicios, finalidades, emisión y descarga de sus certificados |
-| `/status` | posiciones de revocación |
-| `/graph` | el grafo dibujado y las cadenas que no llegan a ningún ancla |
+| `/wrprc` | emisores de registration certificates, sus listas y sus posiciones |
+| `/graph` | el grafo completo y las cadenas que no llegan a ningún ancla |
 | `/reset` | inventario del almacén y los dos reinicios |
 | `/docs/:id` | editor JSON de cualquier documento, con validación al guardar |
 

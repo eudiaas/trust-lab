@@ -17,10 +17,10 @@ import { openStore, seedIfEmpty } from '../../packages/store/src/index.mjs';
 import * as ops from '../../packages/ops/src/index.mjs';
 import { assertRegistry } from '../../packages/registry/src/index.mjs';
 import { describeKey, assertTlsoProfile, SIGNER_ROLES, signerRole } from '../../packages/ca/src/index.mjs';
-import { readiness, rpReadiness, tlsoCandidates, signingCandidates } from './readiness.mjs';
+import { readiness, rpReadiness, tlsoCandidates, signingCandidates, resumen } from './readiness.mjs';
 import * as views from './views.mjs';
 import { buildGraph, danglingChains } from '../../packages/graph/src/index.mjs';
-import { graphSvg } from './graph-svg.mjs';
+import { graphSvg, graphResumenSvg } from './graph-svg.mjs';
 
 const crypto = new Crypto();
 cryptoProvider.set(crypto);
@@ -120,11 +120,9 @@ const server = createServer(async (req, res) => {
 
     // ---- lectura ----
     if (path === '/' && req.method === 'GET') {
-      const [items, rps, signers] = await Promise.all([
-        readiness(store), rpReadiness(store), tlsoCandidates(store, null),
-      ]);
+      const { estado, faltan, rps } = await resumen(store);
       return send(res, 200, views.dashboard({
-        items, rps, signers: signers.filter((s) => !s.errors.length), flash,
+        estado, faltan, rps, svg: graphResumenSvg(estado), flash,
       }));
     }
 
@@ -191,34 +189,15 @@ const server = createServer(async (req, res) => {
       }));
     }
 
-    if (path === '/status' && req.method === 'GET') {
-      const docs = (await store.docs.list('*')).filter((d) => d.kind === 'token-status-list');
-      const lists = [];
-      for (const d of docs) {
-        lists.push({
-          id: d.id, url: d.url, size: d.size, entries: d.entries ?? {},
-          revoked: Object.values(d.entries ?? {}).filter((e) => e.status !== 'valid').length,
-          issuerKey: d.issuerKey ?? null, issuer: d.issuer ?? null,
-          assigned: d.assigned ?? {},
-          published: await store.artifacts.latest('status', d.id),
-        });
-      }
-      // Los candidatos a EMISOR de una status list no son los firmantes de
-      // listas: son las claves que firman certificados de registro. Ofrecer un
-      // TLSO aqui era la version en interfaz del mismo error de modelo.
-      // Fuera el firmante de listas: su certificado declara con un EKU que su
-      // trabajo es firmar listas de confianza, no emitir ni revocar
-      // certificados de registro. Ofrecerlo aqui reintroduce el mismo error.
-      const emisores = (await signingCandidates(store))
-        .filter((s) => !s.expired && s.role !== 'firmante de listas');
-      return send(res, 200, views.statusPage({ lists, emisores, flash }));
+    if ((path === '/wrprc' || path === '/status') && req.method === 'GET') {
+      // `/status` sigue respondiendo: los enlaces viejos apuntan ahi.
+      if (path === '/status') return send(res, 303, '', { Location: '/wrprc' });
+      const { emisores, huerfanas } = await ops.wrprcIssuers(store);
+      const candidatos = (await signingCandidates(store))
+        .filter((k) => !k.expired && k.role !== 'firmante de listas');
+      return send(res, 200, views.wrprcPage({ emisores, huerfanas, candidatos, flash }));
     }
 
-    // ---- descarga ----
-    // Detras del login, y con `attachment` para que el navegador no pinte una
-    // clave privada en una pestana. El publisher NO tiene ninguna de estas
-    // rutas: no puede descifrar claves y no debe servir WRPRC, que no es
-    // material publicado sino material que se entrega a su titular.
     if (parts[0] === 'lists' && parts.length === 2 && req.method === 'GET') {
       const doc = await store.docs.get('*', parts[1]);
       if (!doc) return send(res, 404, 'no existe');
@@ -393,14 +372,14 @@ const server = createServer(async (req, res) => {
           (r.warnings?.length ? `\n⚠ ${r.warnings.join('\n⚠ ')}` : ''));
     }
 
-    if (parts[0] === 'status' && parts[2] === 'issuer') {
-      return run(res, '/status', () =>
+    if (parts[0] === 'wrprc' && parts[2] === 'issuer') {
+      return run(res, '/wrprc', () =>
         ops.setStatusIssuer(store, { id: parts[1], issuerKey: form.get('issuerKey') }),
         (r) => `${r.id} la revoca ahora ${r.issuerKey} (${r.issuer}). Reemitela para que salga.`);
     }
 
-    if (path === '/status' && parts.length === 1) {
-      return run(res, '/status', () =>
+    if (path === '/wrprc' && parts.length === 1) {
+      return run(res, '/wrprc', () =>
         ops.createStatusList(store, {
           id: form.get('id')?.trim(), issuerKey: form.get('issuerKey'),
           url: form.get('url'), size: form.get('size') ? Number(form.get('size')) : undefined,
@@ -408,16 +387,16 @@ const server = createServer(async (req, res) => {
         (r) => `Status list ${r.id} creada, la firma ${r.issuerKey}. Marca posiciones y emitela.`);
     }
 
-    if (parts[0] === 'status' && parts[2] === 'set') {
-      return run(res, '/status', () =>
+    if (parts[0] === 'wrprc' && parts[2] === 'set') {
+      return run(res, '/wrprc', () =>
         ops.setStatus(store, {
           id: parts[1], idx: form.get('idx'), status: form.get('status'), note: form.get('note'),
         }),
         (r) => `Posicion ${r.idx} → ${r.status}. Pendiente de reemitir la lista para que se publique.`);
     }
 
-    if (parts[0] === 'status' && parts[2] === 'build') {
-      return run(res, '/status', () =>
+    if (parts[0] === 'wrprc' && parts[2] === 'build') {
+      return run(res, '/wrprc', () =>
         ops.buildStatusList(store, crypto, { id: parts[1] }),
         (r) => `Status list ${r.id} reemitida (#${r.sequence}) por ${r.signer} · ${r.revoked} no valida(s)`);
     }

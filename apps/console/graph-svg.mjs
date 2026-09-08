@@ -261,3 +261,80 @@ export const COLUMN_TITLES = [
   'firma las listas', 'listas de confianza', 'anclas publicadas',
   'lo que cuelga de ellas', 'emitido', 'revocacion',
 ];
+
+
+/**
+ * El grafo, resumido: un nodo por tipo de pieza, no uno por objeto.
+ *
+ * El completo de `/graph` sirve para depurar una cadena concreta; en la portada
+ * estorba. Aqui la pregunta es otra —"¿esta el marco montado?"— y se responde
+ * con siete cajas que se pintan segun haya o falte, no con veintisiete.
+ */
+export function graphResumenSvg(estado) {
+  const W2 = 172, H2 = 54, GX = 74, GY = 26, P2 = 20;
+  const cols = [
+    [{ k: 'tlso', t: 'Firmante de listas' }],
+    [
+      { k: 'av', t: 'AV Trusted List' },
+      { k: 'pid', t: 'PID providers' },
+      { k: 'wallet', t: 'Wallet providers' },
+      { k: 'wrpac', t: 'WRPAC providers' },
+      { k: 'wrprc', t: 'WRPRC providers' },
+    ],
+    [{ k: 'rps', t: 'Relying parties' }],
+    [{ k: 'certs', t: 'Certificados emitidos' }],
+  ];
+  const filas = Math.max(...cols.map((c) => c.length));
+  const width = P2 * 2 + cols.length * W2 + (cols.length - 1) * GX;
+  const height = P2 * 2 + filas * (H2 + GY);
+
+  const pos = new Map();
+  cols.forEach((col, ci) => {
+    const off = ((filas - col.length) * (H2 + GY)) / 2;
+    col.forEach((n, ri) => pos.set(n.k, {
+      x: P2 + ci * (W2 + GX), y: P2 + off + ri * (H2 + GY), ...n,
+    }));
+  });
+
+  const aristas = [
+    ['tlso', 'av'], ['tlso', 'pid'], ['tlso', 'wallet'], ['tlso', 'wrpac'], ['tlso', 'wrprc'],
+    ['wrpac', 'rps'], ['wrprc', 'rps'], ['rps', 'certs'],
+  ];
+  const lineas = aristas
+    .map(([a, b]) => {
+      const p = pos.get(a), q = pos.get(b);
+      const x1 = p.x + W2, y1 = p.y + H2 / 2, x2 = q.x, y2 = q.y + H2 / 2;
+      const mx = (x1 + x2) / 2;
+      const ok = estado[a]?.ok && estado[b]?.ok;
+      return `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" fill="none"
+        stroke="${ok ? 'var(--dim)' : 'var(--border)'}" stroke-width="1.2"
+        ${ok ? '' : 'stroke-dasharray="4 4"'} marker-end="url(#b)"/>`;
+    })
+    .join('');
+
+  const cajas = [...pos.values()]
+    .map((n) => {
+      const e = estado[n.k] ?? {};
+      const [fill, stroke] = e.ok
+        ? ['#3fb95018', 'var(--ok)']
+        : e.parcial
+          ? ['#d2992218', 'var(--warn)']
+          : ['#da363310', 'var(--bad)'];
+      return `<g><rect x="${n.x}" y="${n.y}" width="${W2}" height="${H2}" rx="9"
+        fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>
+        <text x="${n.x + 12}" y="${n.y + 22}" class="rn">${esc(n.t)}</text>
+        <text x="${n.x + 12}" y="${n.y + 40}" class="rs">${esc(e.detalle ?? '—')}</text></g>`;
+    })
+    .join('');
+
+  return `<svg viewBox="0 0 ${width} ${height}" width="100%" style="max-width:${width}px"
+    xmlns="http://www.w3.org/2000/svg" role="img" aria-label="resumen del marco">
+    <defs><marker id="b" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="var(--dim)"/></marker></defs>
+    <style>
+      .rn { font: 600 13px system-ui, sans-serif; fill: var(--text) }
+      .rs { font: 11px var(--mono); fill: var(--dim) }
+    </style>
+    ${lineas}${cajas}
+  </svg>`;
+}

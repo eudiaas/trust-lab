@@ -195,9 +195,15 @@ export async function buildLoteList(store, crypto, { id, signerName }) {
 export async function setStatus(store, { id, idx, status, note }) {
   if (!(status in STATUS_BY_NAME)) throw new OpError(`estado desconocido: ${status}`);
   const state = await loadDoc(store, id);
-  state.entries[idx] = { status, ...(note ? { note } : {}), changedAt: new Date().toISOString() };
-  await store.docs.put(state.kind, id, state);
-  return { id, idx, status, pendingPublish: true };
+  const positions = positionsOf(state);
+  positions[idx] = {
+    ...(positions[idx] ?? {}),
+    status,
+    ...(note ? { note } : {}),
+    changedAt: new Date().toISOString(),
+  };
+  await store.docs.put(state.kind, id, setPositions(state, positions));
+  return { id, idx, status, ocupante: positions[idx], pendingPublish: true };
 }
 
 /**
@@ -272,7 +278,7 @@ export async function buildStatusList(store, crypto, { id, signerName }) {
     nextUpdate: new Date(Date.now() + (state.expiresInDays ?? 30) * 86400000).toISOString(),
   });
   await store.docs.put(state.kind, id, state);
-  const revoked = Object.values(state.entries).filter((e) => e.status !== 'valid').length;
+  const revoked = Object.values(positionsOf(state)).filter((e) => (e.status ?? 'valid') !== 'valid').length;
   return { id, sequence: state.sequenceNumber, artifact, size: state.size, revoked,
     url: state.url, signer: firmante, issuer: state.issuer ?? null };
 }
@@ -374,8 +380,8 @@ export async function issueWrprc(store, crypto, { registryId, serviceId, useId, 
   // mire el estado lo rechaza. Se avisa en vez de bloquear, porque reemitir
   // tras levantar la revocacion es un flujo real.
   const sl2 = await loadDoc(store, sl?.listId).catch(() => null);
-  const estado = sl2?.entries?.[String(idx)]?.status;
-  const avisos = estado && estado !== 'valid'
+  const estado = statusAt(positionsOf(sl2), idx);
+  const avisos = estado !== 'valid'
     ? [`la posicion ${idx} de ${sl.listId} esta "${estado}": este WRPRC nace revocado`]
     : [];
 
@@ -496,6 +502,43 @@ export async function exportArtifact(store, { kind, id, sequence }) {
 // ---------------------------------------------------------------------------
 
 /** Posiciones de la lista de revocacion que ya tiene reservadas algun registro. */
+// ---------------------------------------------------------------------------
+// Posiciones de una status list
+//
+// Habia DOS mapas sobre el mismo espacio de claves: `entries` con el estado de
+// cada posicion y `assigned` con a quien se entrego. Se anadieron en momentos
+// distintos —el estado primero, el libro de asignaciones despues, para impedir
+// el reciclado— y nada los obligaba a estar separados: una posicion tiene un
+// ocupante y un estado, no son dos cosas.
+//
+// Ahora es uno solo, `positions`. Los documentos antiguos se leen mezclando los
+// dos y se reescriben unificados en cuanto algo los toca.
+// ---------------------------------------------------------------------------
+
+/** Las posiciones de una status list, vengan del formato nuevo o del viejo. */
+export function positionsOf(doc) {
+  if (doc?.positions) return { ...doc.positions };
+  const out = {};
+  for (const [idx, e] of Object.entries(doc?.assigned ?? {})) {
+    out[idx] = { ...e };
+  }
+  for (const [idx, e] of Object.entries(doc?.entries ?? {})) {
+    out[idx] = { ...(out[idx] ?? {}), ...e };
+  }
+  return out;
+}
+
+/** Escribe el mapa unificado y retira los dos antiguos. */
+function setPositions(doc, positions) {
+  doc.positions = positions;
+  delete doc.entries;
+  delete doc.assigned;
+  return doc;
+}
+
+/** Estado efectivo de una posicion: sin marcar, valida. */
+export const statusAt = (positions, idx) => positions?.[String(idx)]?.status ?? 'valid';
+
 /**
  * Posiciones que NO se pueden entregar, por cualquiera de las tres razones.
  *
@@ -506,17 +549,14 @@ export async function exportArtifact(store, { kind, id, sequence }) {
 async function takenIndexes(store, listId) {
   const taken = new Set();
   const lista = await store.docs.get('*', listId).catch(() => null);
+  const positions = positionsOf(lista);
 
-  // 1. Entregadas alguna vez. Incluye las liberadas: una posicion no se
-  //    recicla NUNCA. Reutilizarla haria que un certificado nuevo heredase el
-  //    estado del viejo — y peor, que quien guardase el viejo veredicto lo
-  //    aplicase al nuevo titular.
-  for (const idx of Object.keys(lista?.assigned ?? {})) taken.add(Number(idx));
-
-  // 2. Marcadas como no validas, aunque nadie las reclame.
-  for (const [idx, e] of Object.entries(lista?.entries ?? {})) {
-    if (e?.status && e.status !== 'valid') taken.add(Number(idx));
-  }
+  // 1. Toda posicion que figure en el mapa esta gastada, tenga ocupante vivo,
+  //    liberado o solo un estado marcado. Una posicion no se recicla NUNCA:
+  //    reutilizarla haria que un certificado nuevo heredase el rastro del
+  //    viejo, y que quien guardase el veredicto antiguo se lo aplicase al
+  //    nuevo titular.
+  for (const idx of Object.keys(positions)) taken.add(Number(idx));
 
   // 3. Declaradas por algun registro. Es compatibilidad hacia atras: los
   //    registros anteriores al libro de asignaciones llevan la posicion dentro.
@@ -553,18 +593,20 @@ async function allocateIndex(store, listId, quien) {
   for (let i = 0; i < size; i += 1) if (!taken.has(i)) disponibles.push(i);
   const idx = disponibles[randomInt(disponibles.length)];
 
-  lista.assigned = lista.assigned ?? {};
-  lista.assigned[idx] = { ...quien, assignedAt: new Date().toISOString() };
-  await store.docs.put(lista.kind, listId, lista);
+  const positions = positionsOf(lista);
+  positions[idx] = { ...quien, status: 'valid', assignedAt: new Date().toISOString() };
+  await store.docs.put(lista.kind, listId, setPositions(lista, positions));
   return idx;
 }
 
 /** Marca una posicion como liberada. Sigue gastada: no vuelve al sorteo. */
 async function releaseIndex(store, listId, idx, motivo) {
   const lista = await store.docs.get('*', listId).catch(() => null);
-  if (!lista?.assigned?.[idx]) return false;
-  lista.assigned[idx] = { ...lista.assigned[idx], releasedAt: new Date().toISOString(), motivo };
-  await store.docs.put(lista.kind, listId, lista);
+  if (!lista) return false;
+  const positions = positionsOf(lista);
+  if (!positions[idx]) return false;
+  positions[idx] = { ...positions[idx], releasedAt: new Date().toISOString(), motivo };
+  await store.docs.put(lista.kind, listId, setPositions(lista, positions));
   return true;
 }
 
@@ -1046,4 +1088,96 @@ export async function enabledBy(store, loteType) {
     });
   }
   return { listas, habilitadas: out, publicadas: publicadas.size };
+}
+
+
+/**
+ * Los emisores de certificados de registro, con sus listas y sus posiciones.
+ *
+ * La pantalla se organiza por EMISOR y no por lista porque es lo que decide
+ * todo lo demas: quien emite es quien revoca, y sus listas cuelgan de el. Una
+ * lista huerfana —sin emisor asignado— aparece aparte, porque no se puede
+ * emitir hasta atarla a uno.
+ */
+export async function wrprcIssuers(store) {
+  const docs = await store.docs.list('*');
+  const listas = docs.filter((d) => d.kind === 'token-status-list');
+  const registros = docs.filter((d) => d.walletRelyingParty);
+
+  // De que WRPRC es cada posicion: se resuelve una vez y se reparte.
+  const emitidos = new Map();   // `${listId}#${idx}` -> datos del certificado
+  for (const reg of registros) {
+    const listId = reg.statusList?.listId;
+    if (!listId) continue;
+    for (const svc of reg.walletRelyingParty.services ?? []) {
+      for (const u of svc.intendedUses ?? []) {
+        const idx = reg.statusList.indexByIntendedUse?.[u.intendedUseIdentifier];
+        if (idx === undefined) continue;
+        const aid = wrprcArtifactId(reg.id, svc.serviceIdentifier, u.intendedUseIdentifier);
+        emitidos.set(`${listId}#${idx}`, {
+          artifactId: aid,
+          rp: reg.id,
+          legalName: reg.walletRelyingParty.legalName ?? reg.id,
+          service: svc.serviceIdentifier,
+          use: u.intendedUseIdentifier,
+          publicado: !!(await store.artifacts.latest('wrprc', aid)),
+        });
+      }
+    }
+  }
+
+  const raw = store.rawKeys ?? store.keys;
+  const porEmisor = new Map();
+  const huerfanas = [];
+
+  for (const doc of listas) {
+    const positions = positionsOf(doc);
+    const filas = Object.entries(positions)
+      .map(([idx, p]) => ({
+        idx: Number(idx),
+        status: p.status ?? 'valid',
+        note: p.note ?? null,
+        releasedAt: p.releasedAt ?? null,
+        motivo: p.motivo ?? null,
+        // El ocupante vivo se resuelve contra el registro; si no lo hay, se
+        // usa lo que quedo anotado en el libro al entregarla.
+        cert: emitidos.get(`${doc.id}#${idx}`) ?? null,
+        anotado: [p.registry, p.service, p.use].filter(Boolean).join(' / ') || null,
+      }))
+      .sort((a, b) => a.idx - b.idx);
+
+    const lista = {
+      id: doc.id, url: doc.url ?? null, size: doc.size ?? 0,
+      posiciones: filas,
+      enUso: filas.filter((f) => !f.releasedAt).length,
+      revocadas: filas.filter((f) => f.status !== 'valid').length,
+      published: await store.artifacts.latest('status', doc.id),
+    };
+
+    if (!doc.issuerKey) {
+      huerfanas.push(lista);
+      continue;
+    }
+    if (!porEmisor.has(doc.issuerKey)) {
+      const k = await raw.get(doc.issuerKey).catch(() => null);
+      porEmisor.set(doc.issuerKey, {
+        key: doc.issuerKey,
+        nombre: doc.issuer ?? null,
+        subject: k?.subject ?? null,
+        listas: [],
+      });
+    }
+    porEmisor.get(doc.issuerKey).listas.push(lista);
+  }
+
+  // Emisores habilitados por la lista de prestadores que aun no tienen lista:
+  // sin ella no pueden revocar nada de lo que emitan.
+  const habilitados = (await enabledBy(store, 'EUWRPRCProvidersList')).habilitadas;
+  for (const h of habilitados) {
+    if (!porEmisor.has(h.name)) {
+      porEmisor.set(h.name, { key: h.name, nombre: h.entidad, subject: h.subject, listas: [] });
+    }
+  }
+
+  return { emisores: [...porEmisor.values()], huerfanas };
 }

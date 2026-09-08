@@ -9,6 +9,6 @@
   "size": 1024,
   "expiresInDays": 30,
   "sequenceNumber": 3,
-  "entries": {},
-  "_entries": "Vacia a proposito: un laboratorio recien montado no tiene nada revocado. Las posiciones se marcan desde /status, y la lista hay que reemitirla para que salga."
+  "positions": {},
+  "_positions": "Posiciones de la lista: ocupante y estado en un solo mapa. Antes eran dos —`entries` con el estado y `assigned` con a quien se entrego—; los documentos antiguos se leen mezclando los dos y se reescriben unificados al tocarlos."
 }

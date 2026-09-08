@@ -173,3 +173,77 @@ export async function rpReadiness(store) {
   }
   return out;
 }
+
+/**
+ * El estado del marco, resumido para la portada.
+ *
+ * Responde una sola pregunta —"¿esta montado?"— y por eso no lleva acciones:
+ * cada pieza dice si esta, si esta a medias o si falta, y donde se arregla. El
+ * detalle y los botones viven en su pantalla.
+ */
+export async function resumen(store) {
+  const docs = await store.docs.list('*');
+  const items = await readiness(store);
+  const porId = new Map(items.map((i) => [i.id, i]));
+  const firmantes = (await tlsoCandidates(store, null)).filter((s) => !s.errors.length);
+  const rps = await rpReadiness(store);
+
+  const deLista = (id) => {
+    const i = porId.get(id);
+    if (!i) return { ok: false, detalle: 'no existe' };
+    if (!i.entries) return { ok: false, detalle: 'vacia' };
+    if (!i.published) return { ok: false, parcial: true, detalle: `${i.entries} entrada(s), sin publicar` };
+    return { ok: true, detalle: `${i.entries} entrada(s) · #${i.published.sequence}` };
+  };
+
+  const listas = ['av-lab', 'pid-lab', 'wallet-lab', 'wrpac-lab', 'wrprc-lab'];
+  const estado = {
+    tlso: firmantes.length
+      ? { ok: true, detalle: `${firmantes.length} conforme(s)` }
+      : { ok: false, detalle: 'no hay ninguno' },
+    av: deLista('av-lab'),
+    pid: deLista('pid-lab'),
+    wallet: deLista('wallet-lab'),
+    wrpac: deLista('wrpac-lab'),
+    wrprc: deLista('wrprc-lab'),
+  };
+
+  const validas = rps.filter((r) => !r.problems.length).length;
+  estado.rps = rps.length
+    ? { ok: validas === rps.length, parcial: validas > 0, detalle: `${validas}/${rps.length} validas` }
+    : { ok: false, detalle: 'ninguna dada de alta' };
+
+  let access = 0;
+  let wrprcEmitidos = 0;
+  for (const rp of rps) {
+    for (const s of rp.services) {
+      if (s.accessKey) access += 1;
+      wrprcEmitidos += s.uses.filter((u) => u.published).length;
+    }
+  }
+  estado.certs = access + wrprcEmitidos
+    ? { ok: true, detalle: `${access} acceso · ${wrprcEmitidos} registro` }
+    : { ok: false, detalle: 'ninguno emitido' };
+
+  // Lo que falta, en el orden en que hay que resolverlo.
+  const faltan = [];
+  if (!firmantes.length) faltan.push({ que: 'Un firmante de listas', donde: '/keys' });
+  for (const id of listas) {
+    const i = porId.get(id);
+    if (!i) continue;
+    if (!i.entries) faltan.push({ que: `${i.title} esta vacia`, donde: `/lists/${id}` });
+    else if (!i.published) faltan.push({ que: `${i.title} sin publicar`, donde: `/lists/${id}` });
+    else if (i.published.stale) faltan.push({ que: `${i.title} caducada`, donde: `/lists/${id}` });
+  }
+  const sinEmisor = docs.filter((d) => d.kind === 'token-status-list' && !d.issuerKey);
+  for (const d of sinEmisor) {
+    faltan.push({ que: `La status list ${d.id} no tiene emisor`, donde: '/wrprc' });
+  }
+  for (const rp of rps) {
+    if (rp.problems.length) {
+      faltan.push({ que: `${rp.legalName}: ${rp.problems.length} problema(s) en el registro`, donde: `/docs/${rp.id}` });
+    }
+  }
+
+  return { estado, faltan, rps };
+}

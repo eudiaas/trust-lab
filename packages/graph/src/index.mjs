@@ -111,8 +111,9 @@ export async function buildGraph(store) {
         id: `status:${doc.id}`, type: 'status', name: doc.id, kind, label: doc.id,
         url: doc.url ?? null, issuerKey: doc.issuerKey ?? null, issuer: doc.issuer ?? null,
         size: doc.size ?? 0,
-        gastadas: Object.keys(doc.assigned ?? {}).length,
-        revocadas: Object.values(doc.entries ?? {}).filter((e) => e.status !== 'valid').length,
+        gastadas: Object.keys(doc.positions ?? doc.assigned ?? {}).length,
+        revocadas: Object.values(doc.positions ?? doc.entries ?? {})
+          .filter((e) => (e.status ?? 'valid') !== 'valid').length,
       });
       continue;
     }

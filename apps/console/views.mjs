@@ -72,7 +72,7 @@ export function layout({ title, path, body, flash }) {
     ['/keys', 'Claves'],
     ['/lists', 'Listas'],
     ['/rps', 'Relying parties'],
-    ['/status', 'Revocacion'],
+    ['/wrprc', 'Registration certificates'],
     ['/graph', 'Dependencias'],
     ['/reset', 'Reiniciar'],
   ]
@@ -113,77 +113,72 @@ const badge = (item) => {
   return '<span class="pill ok">publicada</span>';
 };
 
-export function dashboard({ items, rps, signers, flash }) {
-  // Las status lists no van con las listas de confianza tampoco aqui: no dicen
-  // en quien se confia, y ademas su firmante no se elige — lo impone su
-  // emisor. Mezclarlas obligaba a pintar un desplegable que en su caso no
-  // significa nada.
-  const confianza = items.filter((i) => i.kind !== 'token-status-list');
-  const revocacion = items.filter((i) => i.kind === 'token-status-list');
-
-  const card = (i) => `<div class="card">
-      <h3>${esc(i.title)} ${badge(i)} ${i.nonNormative ? '<span class="pill warn">no normativo</span>' : ''}</h3>
-      <div class="meta">${esc(i.type)} · ${i.entries} ${
-        i.kind === 'token-status-list' ? 'revocada(s)' : 'entrada(s)'
-      }${i.published ? ` · publicada #${i.published.sequence}` : ''}${
-        i.published?.nextUpdate
-          ? ` · vence ${esc(new Date(i.published.nextUpdate).toISOString().slice(0, 16).replace('T', ' '))}`
-          : ''
-      }${i.issuer ? ` · revoca ${esc(i.issuer)}` : ''}</div>
-      ${
-        i.blockers.length
-          ? `<ul class="blockers">${i.blockers.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>`
-          : i.kind === 'token-status-list'
-            ? `<form class="inline" method="post" action="/status/${encodeURIComponent(i.id)}/build">
-                 <button class="primary">Reemitir${i.issuerKey ? ` con ${esc(i.issuerKey)}` : ''}</button></form>
-               <span class="mono" style="color:var(--dim)">${esc(i.url ?? '')}</span>`
-            : `<form class="inline" method="post" action="/lists/${encodeURIComponent(i.id)}/build">
-                 <select name="signer">${i.signers.map((s) => `<option>${esc(s)}</option>`).join('')}</select>
-                 <button class="primary">Emitir</button></form>
-               <span class="mono" style="color:var(--dim)">${esc(i.url ?? '')}</span>`
-      }
-    </div>`;
-
+/**
+ * La portada: solo informa.
+ *
+ * Antes tenia las tarjetas de cada lista con su boton de emitir, que es
+ * duplicar /lists con menos contexto. Ahora responde una sola pregunta —"¿esta
+ * el marco montado?"— y para cada cosa que falta enlaza a donde se arregla.
+ * Sin acciones: si el resumen tuviera botones, volveria a ser un panel de
+ * control con la mitad de la informacion.
+ */
+export function dashboard({ estado, faltan, rps, svg, flash }) {
   const rpRows = rps
     .map(
       (rp) => `<tr><td><a href="/rps/${encodeURIComponent(rp.id)}">${esc(rp.legalName ?? rp.id)}</a></td>
-      <td>${rp.problems.length ? `<span class="pill bad">${rp.problems.length} problema(s)</span>` : '<span class="pill ok">valida</span>'}</td>
-      <td>${rp.services.map((s) => esc(s.name)).join(', ')}</td>
-      <td>${rp.services.reduce((n, s) => n + s.uses.length, 0)}</td></tr>`,
+      <td>${
+        rp.problems.length
+          ? `<span class="pill bad">${rp.problems.length} problema(s)</span>`
+          : '<span class="pill ok">valida</span>'
+      }</td>
+      <td>${rp.services.length}</td>
+      <td>${rp.services.reduce((n, s) => n + s.uses.length, 0)}</td>
+      <td>${rp.services.reduce((n, s) => n + s.uses.filter((u) => u.published).length, 0)}</td></tr>`,
     )
     .join('');
+
+  const listo = faltan.length === 0;
 
   return layout({
     title: 'Estado',
     path: '/', flash,
     body: `<h1>Estado del marco de confianza</h1>
-    <p class="lead">Que se puede emitir ya, y que lo impide. El orden no es una
-    secuencia: es el grafo de dependencias del marco entero.</p>
+    <p class="lead">Un resumen de si esta montado y de que falta. Las acciones estan en su
+    pantalla: esta pagina no toca nada.</p>
+
     ${
-      signers.length
-        ? ''
-        : `<div class="flash bad">No hay ningun firmante de listas. Sin el, ninguna lista se puede emitir: crea uno en <a href="/keys">Claves</a>.</div>`
+      listo
+        ? '<div class="flash ok">El marco esta completo: todas las listas publicadas y al dia.</div>'
+        : `<div class="flash bad">${esc(`Faltan ${faltan.length} cosa(s) por resolver.`)}</div>`
     }
-    <h2>Listas de confianza</h2>
-    ${confianza.map(card).join('') || '<p class="meta">No hay ninguna lista definida.</p>'}
-    <h2>Revocacion</h2>
-    <p class="meta">Una por emisor de certificados de registro, firmada por el.</p>
-    ${revocacion.map(card).join('') || '<p class="meta">No hay ninguna status list.</p>'}
+
+    <div class="card" style="overflow-x:auto">${svg}</div>
+
+    ${
+      faltan.length
+        ? `<h2>Que falta</h2>
+           <table><tr><th>Pendiente</th><th></th></tr>
+           ${faltan
+             .map(
+               (f) => `<tr><td>${esc(f.que)}</td>
+               <td><a href="${esc(f.donde)}">Resolver</a></td></tr>`,
+             )
+             .join('')}</table>`
+        : ''
+    }
+
     <h2>Relying parties</h2>
-    <table><tr><th>Entidad</th><th>Registro</th><th>Servicios</th><th>Finalidades</th><th></th></tr>${rpRows}</table>`,
+    ${
+      rps.length
+        ? `<table><tr><th>Entidad</th><th>Registro</th><th>Servicios</th><th>Finalidades</th>
+             <th>WRPRC emitidos</th></tr>${rpRows}</table>`
+        : '<p class="meta">Ninguna dada de alta.</p>'
+    }
+
+    <p class="note">El grafo completo, con cada certificado y cada cadena, esta en
+    <a href="/graph">Dependencias</a>.</p>`,
   });
 }
-
-// Los seis tipos de la tabla 2 de TS 119 475, con el prefijo semantico que
-// cada uno produce en el certificado (EN 319 412-1 §5.1.3).
-const ID_TYPE_LABELS = {
-  'http://data.europa.eu/eudi/id/VATIN': 'NIF / VAT (VAT…)',
-  'http://data.europa.eu/eudi/id/EUID': 'EUID registro mercantil (NTR…)',
-  'http://data.europa.eu/eudi/id/LEI': 'LEI (LEI…)',
-  'http://data.europa.eu/eudi/id/EORI-No': 'EORI (EOR…)',
-  'http://data.europa.eu/eudi/id/TIN': 'TIN (VAT… / TIN…)',
-  'http://data.europa.eu/eudi/id/Excise': 'Numero de impuestos especiales (EXC…)',
-};
 
 export function rpsPage({ rps, statusLists = [], flash }) {
   return layout({
@@ -517,106 +512,123 @@ export function rpPage({ rp, statusLists, signers, cas, listas = {}, flash }) {
 }
 
 /**
- * Revocacion, agrupada por quien revoca.
+ * Registration certificates: los emisores, y bajo cada uno sus listas.
  *
- * La pagina no ofrece elegir firmante, y eso es el cambio: la firma la impone
- * el documento, porque quien emite un certificado es quien puede revocarlo. Un
- * desplegable aqui invitaria a firmar la lista de un emisor con la clave de
- * otro, que es justo lo que no debe poder hacerse.
+ * Organizada por emisor y no por lista porque es lo que decide todo lo demas:
+ * quien emite es quien revoca. Antes era una pantalla de "revocacion" con las
+ * listas sueltas, lo que dejaba fuera de cuadro al emisor —que es el sujeto— y
+ * mostraba las posiciones sin decir de que certificado son.
  */
-export function statusPage({ lists, emisores = [], flash }) {
-  const tabla = (l) => `<table><tr><th>Posicion</th><th>Estado</th><th>Motivo</th><th></th></tr>
-      ${Object.entries(l.entries)
-        .map(
-          ([idx, e]) => `<tr><td class="mono">${esc(idx)}</td>
-          <td><span class="pill ${e.status === 'valid' ? 'ok' : 'bad'}">${esc(e.status)}</span></td>
-          <td class="meta">${esc(e.note ?? '')}</td>
-          <td><form class="inline" method="post" action="/status/${encodeURIComponent(l.id)}/set">
-            <input type="hidden" name="idx" value="${esc(idx)}">
-            <select name="status"><option>valid</option><option>invalid</option><option>suspended</option></select>
-            <button>Cambiar</button></form></td></tr>`,
-        )
-        .join('')}
-      <tr><td colspan="4"><form class="inline" method="post" action="/status/${encodeURIComponent(l.id)}/set">
-        <input type="text" name="idx" placeholder="posicion" size="6" required>
-        <select name="status"><option>invalid</option><option>suspended</option><option>valid</option></select>
-        <input type="text" name="note" placeholder="motivo" size="30">
-        <button>Marcar</button></form></td></tr></table>`;
+export function wrprcPage({ emisores, huerfanas, candidatos = [], flash }) {
+  const ESTADOS = ['valid', 'invalid', 'suspended'];
 
-  const card = (l) => `<div class="card">
-      <h3>${esc(l.id)} ${
-        l.published ? `<span class="pill ok">publicada #${l.published.sequence}</span>` : '<span class="pill warn">sin publicar</span>'
-      }</h3>
-      <div class="meta">Revoca <strong>${esc(l.issuer ?? 'sin emisor asignado')}</strong>${
-        l.issuerKey ? ` · firma <span class="mono">${esc(l.issuerKey)}</span>` : ''
-      }</div>
-      <div class="meta mono">${esc(l.url ?? '')} · ${l.size} posiciones · ${
-        Object.keys(l.assigned ?? {}).length
-      } gastadas · ${l.revoked} no valida(s)</div>
-      ${(() => {
-        const usadas = Object.entries(l.assigned ?? {});
-        if (!usadas.length) return '';
-        const enUso = usadas.filter(([, v]) => !v.releasedAt);
-        const libres = usadas.filter(([, v]) => v.releasedAt);
-        return `<details><summary class="meta">Libro de asignaciones — ${enUso.length} en uso,
-          ${libres.length} gastada(s) sin reasignar</summary>
-          <table style="margin-top:.5rem"><tr><th>Posicion</th><th>Para</th><th>Estado</th></tr>
-          ${usadas
-            .sort((a, b) => Number(a[0]) - Number(b[0]))
+  const posiciones = (l) => `<table style="margin-top:.6rem">
+    <tr><th>Posicion</th><th>Certificado</th><th>Estado</th><th></th></tr>
+    ${
+      l.posiciones.length
+        ? l.posiciones
             .map(
-              ([idx, v]) => `<tr><td class="mono">${esc(idx)}</td>
-              <td class="meta">${esc([v.registry, v.service, v.use].filter(Boolean).join(' / '))}</td>
-              <td>${
-                v.releasedAt
-                  ? `<span class="pill dim">gastada</span> <span class="meta">${esc(v.motivo ?? '')}</span>`
-                  : '<span class="pill ok">en uso</span>'
-              }</td></tr>`,
+              (p) => `<tr>
+        <td class="mono">${p.idx}</td>
+        <td>${
+          p.cert
+            ? `<a href="/rps/${encodeURIComponent(p.cert.rp)}">${esc(p.cert.legalName)}</a>
+               <div class="meta mono">${esc(p.cert.service)} / ${esc(p.cert.use)}${
+                 p.cert.publicado ? '' : ' · sin emitir'
+               }</div>`
+            : p.anotado
+              ? `<span class="meta">${esc(p.anotado)}</span>
+                 <div class="meta">${p.releasedAt ? `liberada — ${esc(p.motivo ?? '')}` : 'sin certificado vivo'}</div>`
+              : '<span class="meta">marcada a mano, sin ocupante</span>'
+        }</td>
+        <td><span class="pill ${p.status === 'valid' ? 'ok' : 'bad'}">${esc(p.status)}</span>
+          ${p.note ? `<div class="meta">${esc(p.note)}</div>` : ''}</td>
+        <td><form class="inline" method="post" action="/wrprc/${encodeURIComponent(l.id)}/set">
+          <input type="hidden" name="idx" value="${p.idx}">
+          <select name="status">${ESTADOS.filter((e) => e !== p.status)
+            .map((e) => `<option>${e}</option>`)
+            .join('')}</select>
+          <input type="text" name="note" placeholder="motivo" size="18">
+          <button>Cambiar</button></form></td></tr>`,
             )
-            .join('')}</table>
-          <p class="note">Una posicion liberada no vuelve al sorteo. La 13.3 del borrador de
-          Token Status List obliga a impedir la doble asignacion: <span class="mono">uri</span> +
-          <span class="mono">idx</span> identifican de forma unica, y reciclarlos haria que un
-          certificado nuevo heredara el rastro del viejo.</p></details>`;
-      })()}
+            .join('')
+        : '<tr><td colspan="4" class="meta">Ninguna posicion entregada todavia.</td></tr>'
+    }
+    <tr><td colspan="4"><form class="inline" method="post" action="/wrprc/${encodeURIComponent(l.id)}/set">
+      <input type="text" name="idx" placeholder="posicion" size="6" required>
+      <select name="status">${ESTADOS.map((e) => `<option>${e}</option>`).join('')}</select>
+      <input type="text" name="note" placeholder="motivo" size="22">
+      <button>Marcar una suelta</button></form></td></tr></table>`;
+
+  const lista = (l, conEmisor) => `<div class="card" style="margin-left:1.2rem">
+      <h4 style="margin:0 0 .3rem">${esc(l.id)} ${
+        l.published
+          ? `<span class="pill ok">publicada #${l.published.sequence}</span>`
+          : '<span class="pill warn">sin publicar</span>'
+      }</h4>
+      <div class="meta mono">${esc(l.url ?? '')} · ${l.size} posiciones · ${l.enUso} en uso ·
+        ${l.revocadas} no valida(s)</div>
+      ${posiciones(l)}
       ${
-        l.issuerKey
-          ? ''
-          : `<div class="flash bad">Sin emisor asignado: no se puede emitir. Elige la clave que
-             firma los certificados que esta lista cubre.</div>
-             <form class="inline" method="post" action="/status/${encodeURIComponent(l.id)}/issuer">
-               <select name="issuerKey">${emisores
-                 .map((e) => `<option value="${esc(e.name)}">${esc(e.name)}</option>`)
-                 .join('')}</select>
-               <button class="primary">Asignar emisor</button></form>`
-      }
-      ${tabla(l)}
-      ${
-        l.issuerKey
-          ? `<form class="inline" method="post" action="/status/${encodeURIComponent(l.id)}/build" style="margin-top:.7rem">
-               <button class="primary">Reemitir firmando con ${esc(l.issuerKey)}</button></form>`
+        conEmisor
+          ? `<form class="inline" method="post" action="/wrprc/${encodeURIComponent(l.id)}/build"
+               style="margin-top:.6rem"><button class="primary">Reemitir</button></form>
+             <span class="meta">Cambiar una posicion no publica nada.</span>`
           : ''
       }
     </div>`;
 
+  const emisor = (e) => `<div class="card">
+      <h3>${esc(e.nombre ?? e.key)} <span class="pill dim mono">${esc(e.key)}</span></h3>
+      <div class="meta mono">${esc(e.subject ?? '')}</div>
+      ${
+        e.listas.length
+          ? e.listas.map((l) => lista(l, true)).join('')
+          : `<div class="flash bad">Sin ninguna status list: lo que emita no se podra revocar.
+             Creale una abajo.</div>`
+      }
+    </div>`;
+
   return layout({
-    title: 'Revocacion',
-    path: '/status', flash,
-    body: `<h1>Revocacion</h1>
-    <p class="lead">Una lista por emisor, con posiciones <strong>al azar</strong> y que no se
-    reciclan. La firma <strong>quien emitio los certificados que cubre</strong> —no el operador del esquema de confianza, que no emitio ninguno— y por eso
-    aqui no se elige firmante: lo impone el documento. Cambiar una posicion no publica nada;
-    hay que reemitir.</p>
-    ${lists.map(card).join('') || '<p class="meta">No hay ninguna lista todavia.</p>'}
+    title: 'Registration certificates',
+    path: '/wrprc', flash,
+    body: `<h1>Registration certificates</h1>
+    <p class="lead">Cada emisor con sus listas de estado y las posiciones que ha entregado.
+    Quien emite un certificado es quien puede revocarlo, asi que aqui no se elige firmante:
+    lo impone el emisor. Cambiar una posicion no publica nada — hay que reemitir la lista.</p>
+
+    ${emisores.map(emisor).join('') || '<p class="meta">No hay ningun emisor de WRPRC todavia.</p>'}
+
+    ${
+      huerfanas.length
+        ? `<h2>Listas sin emisor</h2>
+           <p class="meta">No se pueden emitir hasta atarlas a la clave que firma los
+           certificados que cubren.</p>
+           ${huerfanas
+             .map(
+               (l) => `${lista(l, false)}
+             <form class="inline" method="post" action="/wrprc/${encodeURIComponent(l.id)}/issuer"
+               style="margin-left:1.2rem">
+               <select name="issuerKey">${candidatos
+                 .map((c) => `<option value="${esc(c.name)}">${esc(c.name)}</option>`)
+                 .join('')}</select>
+               <button class="primary">Asignar emisor</button></form>`,
+             )
+             .join('')}`
+        : ''
+    }
 
     <h2>Nueva lista</h2>
     <div class="card">
-      <div class="meta">Cada emisor de certificados de registro lleva la suya. El
-      <span class="mono">iss</span> de la lista firmada sale del certificado de esta clave.</div>
-      <form method="post" action="/status">
+      <div class="meta">Una por emisor. El <span class="mono">iss</span> de la lista firmada sale
+      del certificado de la clave elegida.</div>
+      <form method="post" action="/wrprc">
         <div class="row">
           <input type="text" name="id" placeholder="identificador" pattern="[a-z0-9][a-z0-9-]*" required>
-          <select name="issuerKey">${emisores
-            .map((e) => `<option value="${esc(e.name)}">${esc(e.name)}${e.subject ? ` — ${esc(e.subject)}` : ''}</option>`)
+          <select name="issuerKey">${candidatos
+            .map((c) => `<option value="${esc(c.name)}">${esc(c.name)}${
+              c.subject ? ` — ${esc(c.subject)}` : ''
+            }</option>`)
             .join('')}</select>
         </div>
         <div class="row" style="margin-top:.5rem">

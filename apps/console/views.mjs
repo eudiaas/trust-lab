@@ -346,6 +346,37 @@ export function keysPage({ keys, cas = [], roles = {}, schemes, flash }) {
   });
 }
 
+/**
+ * La nota del editor, segun lo que se este editando.
+ *
+ * Era fija y hablaba del registro de relying parties, asi que al editar una
+ * lista contaba algo que no venia a cuento. La explicacion de por que esto es
+ * un JSON y no un formulario es distinta en cada caso, y en las listas ya no
+ * hace falta darla: tienen su propia pantalla.
+ */
+function notaDocumento(doc) {
+  if (doc?.walletRelyingParty) {
+    return `El registro se edita como documento, no como formulario, a proposito: el modelo
+      de TS5 tiene servicios, finalidades, credenciales y claims anidados, y un formulario de
+      cuarenta campos seria mas lento de usar y mas facil de romper que el JSON con validacion
+      al guardar.`;
+  }
+  if (doc?.kind === 'token-status-list') {
+    return `Esta es la vista cruda. Las posiciones y el emisor se gestionan en
+      <a href="/status">Revocacion</a>; aqui solo hacen falta los campos que esa pantalla no
+      toca, como el tamano o la URL de publicacion. Ojo con <span class="mono">assigned</span>:
+      es el libro de posiciones entregadas y borrar una entrada la devuelve al sorteo, que es
+      justo lo que la norma prohibe.`;
+  }
+  if (doc?.kind === 'etsi-tl-xml' || doc?.kind === 'lote-json') {
+    return `Esta es la vista cruda. Lo que la lista contiene se elige en su propia pagina
+      —<a href="/lists">Listas</a> → el nombre de la lista—, que ademas sabe que certificado
+      publica cada perfil. Aqui se editan los campos que esa pantalla no cubre: la URL de
+      publicacion, el operador del esquema o la vigencia. Guardar no publica: hay que reemitir.`;
+  }
+  return 'Vista cruda del documento. Se valida al guardar.';
+}
+
 export function docPage({ id, doc, problems, title, back, flash }) {
   return layout({
     title,
@@ -362,10 +393,7 @@ export function docPage({ id, doc, problems, title, back, flash }) {
       <div style="margin-top:.6rem"><button class="primary">Guardar</button>
       <a href="${back}" style="margin-left:1rem">Volver</a></div>
     </form>
-    <p class="note">El registro se edita como documento, no como formulario, a
-    proposito: el modelo de TS5 tiene servicios, finalidades, credenciales y
-    claims anidados, y un formulario de cuarenta campos seria mas lento de usar
-    y mas facil de romper que el JSON con validacion al guardar.</p>`,
+    <p class="note">${notaDocumento(doc)}</p>`,
   });
 }
 
@@ -384,15 +412,29 @@ function keyLinks(name) {
   ].join(' · ');
 }
 
-export function rpPage({ rp, statusLists, signers, cas, flash }) {
+export function rpPage({ rp, statusLists, signers, cas, listas = {}, flash }) {
   const services = rp.services
     .map(
       (s) => `<div class="card"><h3>${esc(s.name)} <span class="pill dim">${esc(s.id ?? 'sin id')}</span></h3>
-      <form class="inline" method="post" action="/rps/${encodeURIComponent(rp.id)}/wrpac">
-        <input type="hidden" name="service" value="${esc(s.id)}">
-        <select name="ca">${cas.map((c) => `<option>${esc(c)}</option>`).join('')}</select>
-        <button>${s.accessKey ? 'Reemitir' : 'Emitir'} access certificate</button>
-      </form>
+      ${
+        cas.length
+          ? `<form class="inline" method="post" action="/rps/${encodeURIComponent(rp.id)}/wrpac">
+              <input type="hidden" name="service" value="${esc(s.id)}">
+              <select name="ca">${cas
+                .map((c) => `<option value="${esc(c.name)}">${esc(c.name)}${
+                  c.via === 'por cadena' ? ' (por cadena)' : ''
+                }${c.entidad ? ` — ${esc(c.entidad)}` : ''}</option>`)
+                .join('')}</select>
+              <button>${s.accessKey ? 'Reemitir' : 'Emitir'} access certificate</button>
+            </form>`
+          : `<div class="flash bad">No hay ninguna CA habilitada para emitir access certificates.
+             Publica la CA en ${
+               listas.wrpac?.length
+                 ? `<a href="/lists/${esc(listas.wrpac[0])}">${esc(listas.wrpac[0])}</a>`
+                 : 'la lista de prestadores de access certificates'
+             } y vuelve: un certificado emitido por una CA que ninguna lista publica no encadena
+             con nada.</div>`
+      }
       ${
         s.accessKey
           ? `<div class="meta" style="margin-top:.4rem">Access certificate <span class="mono">${esc(s.accessKey)}</span> ·
@@ -415,11 +457,23 @@ export function rpPage({ rp, statusLists, signers, cas, flash }) {
                   `<input type="hidden" name="rp" value="${esc(rp.id)}">`)}`
               : '<span class="pill dim">no emitido</span>'
           }
-          <form class="inline" method="post" action="/rps/${encodeURIComponent(rp.id)}/wrprc">
-            <input type="hidden" name="service" value="${esc(s.id)}">
-            <input type="hidden" name="use" value="${esc(u.id)}">
-            <select name="signer">${signers.map((x) => `<option>${esc(x)}</option>`).join('')}</select>
-            <button>Emitir</button></form></td></tr>`,
+          ${
+            signers.length
+              ? `<form class="inline" method="post" action="/rps/${encodeURIComponent(rp.id)}/wrprc">
+                  <input type="hidden" name="service" value="${esc(s.id)}">
+                  <input type="hidden" name="use" value="${esc(u.id)}">
+                  <select name="signer">${signers
+                    .map((x) => `<option value="${esc(x.name)}">${esc(x.name)}${
+                      x.via === 'por cadena' ? ' (por cadena)' : ''
+                    }</option>`)
+                    .join('')}</select>
+                  <button>Emitir</button></form>`
+              : `<div class="meta">Sin firmante habilitado: publica uno en ${
+                  listas.wrprc?.length
+                    ? `<a href="/lists/${esc(listas.wrprc[0])}">${esc(listas.wrprc[0])}</a>`
+                    : 'la lista de prestadores de WRPRC'
+                }.</div>`
+          }</td></tr>`,
         )
         .join('')}</table></div>`,
     )

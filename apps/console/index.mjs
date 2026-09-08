@@ -168,12 +168,21 @@ const server = createServer(async (req, res) => {
       const rps = await rpReadiness(store);
       const rp = rps.find((r) => r.id === parts[1]);
       if (!rp) return send(res, 404, 'no existe');
-      // Firmar un WRPRC no es firmar una lista: no se pide el perfil 5.7.1.
-      const signers = (await signingCandidates(store))
-        .filter((s) => !s.expired)
-        .map((s) => s.name);
-      const cas = await store.keys.list();
-      return send(res, 200, views.rpPage({ rp, statusLists: [], signers, cas, flash }));
+      // Solo lo que las listas habilitan. Un access certificate cuya CA no
+      // esta en la lista de prestadores no encadena con nada, y un WRPRC cuyo
+      // firmante tampoco: ofrecerlos era ofrecer material que nace invalido, y
+      // el fallo no aparece al firmar sino al validar.
+      const vivas = new Set(
+        (await signingCandidates(store)).filter((k) => !k.expired).map((k) => k.name),
+      );
+      const wrpac = await ops.enabledBy(store, 'EUWRPACProvidersList');
+      const wrprc = await ops.enabledBy(store, 'EUWRPRCProvidersList');
+      const cas = wrpac.habilitadas;
+      const signers = wrprc.habilitadas.filter((k) => vivas.has(k.name));
+      return send(res, 200, views.rpPage({
+        rp, statusLists: [], signers, cas, flash,
+        listas: { wrpac: wrpac.listas, wrprc: wrprc.listas },
+      }));
     }
 
     if (path === '/status' && req.method === 'GET') {

@@ -316,13 +316,21 @@ export async function issueWrpac(store, crypto, { registryId, serviceId, caName,
   const { X509Certificate } = await import('@peculiar/x509');
   const ca = { keys: { privateKey: caKey }, cert: new X509Certificate(stored.crt[0]), pem: stored.crt[0] };
 
+  // El CLI no bloquea —en un laboratorio se montan escenarios rotos a
+  // proposito— pero lo dice: la consola directamente no ofrece estas claves.
+  const habilitadas = await enabledBy(store, 'EUWRPACProvidersList');
+  const avisos = habilitadas.habilitadas.some((k) => k.name === caName)
+    ? []
+    : [`"${caName}" no esta publicada en ninguna lista de prestadores de access certificates: ` +
+       'lo que salga no encadenara con nada'];
+
   const wrpac = await mintWrpac(crypto, ca, toWrpacSpec(registry, serviceId));
   const bad = assertWrpacProfile(wrpac.pem);
   if (bad.length) throw new OpError('el certificado no cumple el perfil de TS 119 411-8', bad);
 
   const name = keyName ?? `${registryId}-${serviceId}-access`;
   await saveKeyChain(store, crypto, name, wrpac);
-  return { name, subject: wrpac.cert.subject, policy: wrpac.policy, policyOid: wrpac.policyOid };
+  return { name, subject: wrpac.cert.subject, policy: wrpac.policy, policyOid: wrpac.policyOid, avisos };
 }
 
 /** Un WRPRC se identifica por registro + servicio + finalidad, en ese orden. */
@@ -375,6 +383,13 @@ export async function issueWrprc(store, crypto, { registryId, serviceId, useId, 
   // la lista a la que apunta la firma otro, el titular no puede revocarlo y
   // quien puede no lo emitio. Se avisa en vez de bloquear porque en un
   // laboratorio se montan a proposito escenarios asi.
+  const hab = await enabledBy(store, 'EUWRPRCProvidersList');
+  if (!hab.habilitadas.some((k) => k.name === signerName)) {
+    avisos.push(
+      `"${signerName}" no esta publicado en ninguna lista de prestadores de WRPRC: ` +
+        'este certificado no encadenara con nada',
+    );
+  }
   if (sl2?.issuerKey && sl2.issuerKey !== signerName) {
     avisos.push(
       `este WRPRC lo firma ${signerName} pero su lista de revocacion (${sl.listId}) ` +
@@ -985,4 +1000,49 @@ export async function setProviders(store, { id, seleccion = [] }) {
     id, entradas: providers.length, quitadas: previas.length - providers.length,
     nombres: providers.map((p) => p.name), pendientePublicar: true,
   };
+}
+
+/**
+ * Claves habilitadas por una lista de prestadores.
+ *
+ * Un access certificate solo vale si su CA esta publicada en la lista de
+ * prestadores de access certificates, y un WRPRC solo vale si su firmante esta
+ * en la de prestadores de WRPRC. Es la misma comprobacion que hace un
+ * verificador, hecha antes de emitir: si la clave no esta ahi, lo que salga no
+ * encadena con nada y el fallo aparece al validar, no al firmar.
+ *
+ * Cuenta como habilitada la clave cuyo propio certificado esta publicado, y
+ * tambien la que cuelga —por cadena— de algo publicado: en ambos casos un
+ * verificador llega al ancla.
+ */
+export async function enabledBy(store, loteType) {
+  const { fingerprint } = await import('../../graph/src/index.mjs');
+  const publicadas = new Map();   // huella -> nombre de la entidad en la lista
+  const listas = [];
+  for (const doc of await store.docs.list('*')) {
+    if (doc.kind !== 'lote-json' || doc.loteType !== loteType) continue;
+    listas.push(doc.id);
+    for (const p of doc.providers ?? []) {
+      for (const f of ['issuanceCertPem', 'certPem']) {
+        if (p[f]) publicadas.set(fingerprint(p[f]), p.name);
+      }
+    }
+  }
+
+  const raw = store.rawKeys ?? store.keys;
+  const out = [];
+  for (const name of await store.keys.list()) {
+    const doc = await raw.get(name);
+    const cadena = (doc?.crt ?? []).map(fingerprint);
+    if (!cadena.length) continue;
+    const propio = publicadas.has(cadena[0]);
+    const porCadena = cadena.some((f) => publicadas.has(f));
+    if (!porCadena) continue;
+    out.push({
+      name, subject: doc.subject ?? null,
+      via: propio ? 'directo' : 'por cadena',
+      entidad: publicadas.get(cadena.find((f) => publicadas.has(f))),
+    });
+  }
+  return { listas, habilitadas: out, publicadas: publicadas.size };
 }

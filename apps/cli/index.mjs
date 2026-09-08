@@ -80,6 +80,7 @@ const cmds = {
     });
     console.log(`WRPAC ${r.name}: ${r.subject}`);
     console.log(`  politica ${r.policy} (${r.policyOid}) · perfil 6.6.1 · OK`);
+    for (const a of r.avisos ?? []) console.log(`  ⚠ ${a}`);
   },
 
   // trustlab add-provider <estado> <clave> "<nombre>" <CC>

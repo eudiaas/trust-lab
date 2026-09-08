@@ -474,6 +474,14 @@ $T issue-wrprc bodegas svc-1 use-1 wrprc-signer    # registration certificate
 
 > Consola: **Relying parties → \<la RP\>**.
 
+> **Solo se ofrece lo que las listas habilitan.** La CA del access certificate
+> tiene que estar publicada en `wrpac-lab`, y el firmante del WRPRC en
+> `wrprc-lab` — es la misma comprobación que hará un verificador, hecha antes de
+> emitir. Si no hay ninguna habilitada, la página lo dice y enlaza a la lista en
+> vez de ofrecer un desplegable que produciría material que no encadena con
+> nada. El CLI sí deja emitir, avisando: en un laboratorio se montan escenarios
+> rotos a propósito.
+
 El access certificate sale con la política `NCP-l-eudiwrp`
 (`0.4.0.194118.1.2`) y el `organizationIdentifier` derivado del registro. Sus
 atributos **salen del registro**, no de argumentos sueltos: GEN-6.6.1-10 de

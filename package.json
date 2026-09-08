@@ -18,7 +18,7 @@
     "start:publisher": "node apps/publisher/index.mjs",
     "start:console": "node apps/console/index.mjs",
     "trustlab": "node apps/cli/index.mjs",
-    "test": "node packages/store/test/conformance.mjs && node test/signatures.mjs && node test/views.mjs && node test/cli.mjs"
+    "test": "node packages/store/test/conformance.mjs && node test/signatures.mjs && node test/views.mjs && node test/cli.mjs && node test/publisher.mjs && node test/console.mjs"
   },
   "dependencies": {
     "@owf/eudi-lote": "^0.3.2",

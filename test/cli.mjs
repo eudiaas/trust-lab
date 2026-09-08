@@ -18,42 +18,16 @@
 //   · que un cambio de estado no se publique hasta reemitir la lista,
 //   · que un incumplimiento de perfil salga como mensaje y no como pila.
 //
-// Se ejecuta contra una raiz temporal —copia de apps/, packages/ y state/, con
-// node_modules enlazado— asi que no toca ni el repo ni ninguna base de datos.
-// El entorno se limpia a proposito de DATABASE_URL y TRUST_LAB_PGLITE: un test
-// que escribiera en el Postgres del operador seria peor que no tenerlo.
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, cpSync, symlinkSync, readFileSync, existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
-import { randomBytes } from 'node:crypto';
+// Se ejecuta sobre la raiz temporal que monta `harness.mjs`, asi que no toca ni
+// el repo ni ninguna base de datos.
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { contador, crearSandbox, cli as ejecutar } from './harness.mjs';
 
-const ROOT = join(dirname(new URL(import.meta.url).pathname), '..');
-const SANDBOX = mkdtempSync(join(tmpdir(), 'trustlab-e2e-'));
-for (const dir of ['apps', 'packages', 'state']) {
-  cpSync(join(ROOT, dir), join(SANDBOX, dir), { recursive: true });
-}
-symlinkSync(join(ROOT, 'node_modules'), join(SANDBOX, 'node_modules'));
-
-const ENV = { ...process.env, TRUST_LAB_KEY: randomBytes(32).toString('hex') };
-delete ENV.DATABASE_URL;
-delete ENV.TRUST_LAB_PGLITE;
-delete ENV.RAILWAY_ENVIRONMENT_NAME;
-delete ENV.RAILWAY_ENVIRONMENT;
-
-let fallos = 0;
-const check = (nombre, cond, detalle = '') => {
-  if (cond) console.log(`  ok   ${nombre}`);
-  else { fallos += 1; console.log(`  FALLO ${nombre}${detalle ? '\n       ' + detalle : ''}`); }
-};
-
-/** Ejecuta el CLI como lo ejecutaria un operador: proceso aparte, argv y salida. */
-function cli(...args) {
-  const r = spawnSync(process.execPath, ['apps/cli/index.mjs', ...args], {
-    cwd: SANDBOX, env: ENV, encoding: 'utf8',
-  });
-  return { code: r.status, out: r.stdout ?? '', err: r.stderr ?? '', args };
-}
+const { check, fin } = contador();
+const caja = crearSandbox();
+const SANDBOX = caja.dir;
+const cli = (...args) => ejecutar(caja, ...args);
 
 /** Comando que tiene que salir bien. Si no, se ve la salida entera. */
 function ok(nombre, ...args) {
@@ -267,8 +241,7 @@ try {
   check('remove-provider: recuerda que no publica solo',
     cli('remove-provider', 'wrprc-lab', 'espuni S.L.').out.includes('reemitir la lista'));
 } finally {
-  rmSync(SANDBOX, { recursive: true, force: true });
+  caja.limpiar();
 }
 
-console.log(fallos ? `\n${fallos} FALLO(S)` : '\nTODO OK');
-process.exit(fallos ? 1 : 0);
+fin();

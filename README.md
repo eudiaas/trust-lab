@@ -131,22 +131,51 @@ perfil AV, aborta la emisión con el detalle en pantalla.
 npm test
 ```
 
+### Las seis suites
+
+```bash
+npm test
+```
+
 | Suite | Qué cubre |
 |---|---|
 | `packages/store/test/conformance.mjs` | los tres adaptadores de almacén responden igual, SQL incluido (PGlite) |
 | `test/signatures.mjs` | todo lo que se firma se relee: WRPRC y status list verifican contra el certificado de su firmante |
 | `test/views.mjs` | cada vista de la consola se renderiza sin referencias rotas |
-| `test/cli.mjs` | el CLI de punta a punta: monta un marco entero sobre una raíz temporal y comprueba lo emitido |
+| `test/cli.mjs` | el CLI de punta a punta: monta un marco entero y comprueba lo emitido |
+| `test/publisher.mjs` | el publisher sirve lo emitido **y nada más** |
+| `test/console.mjs` | la consola, por HTTP: sesión, emisión, borrado y descargas |
 
-La última no comprueba que el CLI imprima lo que imprime, sino las propiedades
-que cuestan un despliegue: que cada lista publique el certificado que le toca
-(la AV TL el DS, el anexo F la CA emisora), que el `idx` que viaja firmado en el
-WRPRC sea el que se reservó, que reemitir mueva la posición y que una lista
-agotada se niegue **antes que reciclar** una liberada, que un cambio de estado
-no se publique hasta reemitir la lista, y que un incumplimiento de perfil salga
-como mensaje y no como pila. Corre sobre una copia temporal de `apps/`,
-`packages/` y `state/`, con `DATABASE_URL` y `TRUST_LAB_PGLITE` borradas del
-entorno: no toca ni el repo ni ninguna base de datos.
+Las tres últimas arrancan el proceso de verdad sobre una raíz temporal —copia de
+`apps/`, `packages/` y `state/`, con `DATABASE_URL` y `TRUST_LAB_PGLITE`
+borradas del entorno—, así que no tocan ni el repo ni ninguna base de datos.
+`test/harness.mjs` es ese andamiaje.
+
+No comprueban que los programas impriman lo que imprimen, sino las propiedades
+que cuestan un despliegue:
+
+- **CLI** — cada lista publica el certificado que le toca (la AV TL el DS, el
+  anexo F la CA emisora); el `idx` que viaja firmado en el WRPRC es el que se
+  reservó; reemitir mueve la posición y una lista agotada se niega **antes que
+  reciclar** una liberada; un cambio de estado no se publica hasta reemitir la
+  lista; un incumplimiento de perfil sale como mensaje y no como pila.
+- **Publisher** — arranca **sin `TRUST_LAB_KEY`** y aun así publica (no puede
+  descifrar una clave ni queriendo); cualquier método que no sea GET/HEAD es
+  405; sirve en la ruta que el documento **declara**, porque esa URL viaja
+  dentro de lo firmado; una versión histórica devuelve sus bytes de siempre
+  después de reemitir; ninguna ruta publicada filtra material privado.
+- **Consola** — no arranca sin contraseña; sin sesión no responde nada, tampoco
+  la descarga de claves; una cookie con la firma tocada o caducada no vale; un
+  error de operación vuelve como aviso y no como 500; y el flujo entero de
+  emisión funciona pulsando botones, incluidas las operaciones que **sólo**
+  existen ahí (asignar emisor a una status list, editar los miembros de una
+  lista, el reset).
+
+Las dos de servicio corren contra **SQL (PGlite)**, que es lo que hay en
+producción, y no por gusto: el fallo de *"no existe"* al guardar los miembros de
+una lista sólo se reproducía ahí —en fichero el documento lleva su `id` dentro y
+en Postgres la clave primaria es `(kind, id)`—, y el historial de artefactos que
+el publisher sirve tampoco existe en el almacén de fichero, donde lo guarda git.
 
 ## Por qué la lista de laboratorio copia el perfil AV al pie de la letra
 

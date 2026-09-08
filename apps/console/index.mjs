@@ -422,7 +422,8 @@ const server = createServer(async (req, res) => {
         ops.issueWrpac(store, crypto, {
           registryId: parts[1], serviceId: form.get('service'), caName: form.get('ca'),
         }),
-        (r) => `Access certificate ${r.name} emitido bajo ${r.policy}`);
+        (r) => `Access certificate ${r.name} emitido bajo ${r.policy}` +
+          (r.avisos?.length ? `\n⚠ ${r.avisos.join('\n⚠ ')}` : ''));
     }
 
     if (parts[0] === 'rps' && parts[2] === 'wrprc') {

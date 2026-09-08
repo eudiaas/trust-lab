@@ -1,0 +1,119 @@
+# CI: las seis suites, en las dos versiones de Node que el proyecto declara
+# soportar, mas un arranque con la instalacion de produccion.
+#
+# Nota sobre el despliegue: Railway despliega al empujar a `main`, no cuando
+# esto pasa. CI aqui informa, no bloquea — si se quiere que bloquee, hay que
+# activar "Wait for CI" en el servicio de Railway.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Solo lectura: no hay nada que publicar desde CI.
+permissions:
+  contents: read
+
+# Un empujon nuevo cancela el run anterior de la misma rama.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # Que falle una version no oculta el resultado de la otra.
+      fail-fast: false
+      matrix:
+        # Las dos puntas del rango que declara `engines`: la minima soportada y
+        # la que se usa a diario. Postgres va compilado a WASM (PGlite), asi que
+        # no hace falta ningun servicio adicional en el runner.
+        node: ['20', '22']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      # Las suites end-to-end trabajan sobre una raiz temporal justamente para
+      # no tocar el repo. Si alguna acabara escribiendo en `state/` —o dejando
+      # un `out/` que no esta ignorado— se veria aqui y no en el despliegue.
+      - name: el arbol de trabajo sigue limpio
+        run: |
+          sucio=$(git status --porcelain --untracked-files=all)
+          if [ -n "$sucio" ]; then
+            echo "los tests dejaron rastro en el repo:"
+            echo "$sucio"
+            exit 1
+          fi
+
+  produccion:
+    name: arranque con dependencias de produccion
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # Es lo que instala Railway. PGlite es una dependencia de DESARROLLO, asi
+      # que un `import` suyo desde codigo de produccion pasaria los tests y
+      # romperia el despliegue: este job es lo unico que lo caza.
+      - run: npm ci --omit=dev
+
+      - name: el publisher arranca y responde
+        run: |
+          # A un fichero, no a la salida del paso: un proceso en segundo plano
+          # que retiene stdout deja el step colgado hasta el timeout.
+          PORT=8080 npm start > publisher.log 2>&1 &
+          pid=$!
+          for _ in $(seq 1 40); do
+            curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1 && break
+            sleep 0.25
+          done
+          curl -fsS http://127.0.0.1:8080/health || { cat publisher.log; exit 1; }
+          # Y sigue siendo de solo lectura, tambien recien instalado.
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8080/)" = 405
+          cat publisher.log
+          kill "$pid"
+
+      - name: la consola arranca y responde
+        env:
+          TRUST_LAB_APP: console
+          CONSOLE_PASSWORD: contrasena-de-ci
+        run: |
+          PORT=8081 npm start > console.log 2>&1 &
+          pid=$!
+          for _ in $(seq 1 40); do
+            curl -fsS http://127.0.0.1:8081/health >/dev/null 2>&1 && break
+            sleep 0.25
+          done
+          curl -fsS http://127.0.0.1:8081/health || { cat console.log; exit 1; }
+          # Sin sesion no responde nada, tampoco recien instalada.
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8081/keys)" = 401
+          cat console.log
+          kill "$pid"
+
+      - name: sin contrasena la consola no arranca
+        env:
+          TRUST_LAB_APP: console
+        run: |
+          if npm start > sin-clave.log 2>&1; then
+            echo "arranco sin CONSOLE_PASSWORD"
+            exit 1
+          fi
+          grep -q 'no se arranca sin autenticacion' sin-clave.log

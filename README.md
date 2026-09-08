@@ -1,5 +1,7 @@
 # trust-lab
 
+[![CI](https://github.com/eudiaas/trust-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/eudiaas/trust-lab/actions/workflows/ci.yml)
+
 Fábrica de material de confianza para probar wallets EUDI: emite las listas y
 los certificados que en producción emitirían un Estado miembro y sus
 prestadores acreditados, en los mismos formatos que las listas reales de la
@@ -170,6 +172,13 @@ que cuestan un despliegue:
   emisión funciona pulsando botones, incluidas las operaciones que **sólo**
   existen ahí (asignar emisor a una status list, editar los miembros de una
   lista, el reset).
+
+Corren en **CI** (`.github/workflows/ci.yml`) en cada push y cada PR, sobre Node
+20 y 22 —las dos puntas del rango que declara `engines`—, más un job aparte que
+instala como Railway (`npm ci --omit=dev`) y arranca los dos servicios: PGlite es
+una dependencia de desarrollo, así que un `import` suyo desde código de
+producción pasaría los tests y rompería el despliegue, y ese job es lo único que
+lo caza.
 
 Las dos de servicio corren contra **SQL (PGlite)**, que es lo que hay en
 producción, y no por gusto: el fallo de *"no existe"* al guardar los miembros de

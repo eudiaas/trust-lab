@@ -102,11 +102,15 @@ botón de emitir.
 
 - ✅ Instalación de producción (`npm ci --omit=dev`) y también completa (como la
   hace Railpack), con arranque de los dos servicios por `npm start` en ambos
-  casos.
+  casos. Lo comprueba **CI en cada push** (job `arranque con dependencias de
+  produccion`), junto al 405 del publisher y al 401 de la consola sin sesión.
 - ✅ El esquema SQL y todas las operaciones contra Postgres real (PGlite, el
   motor compilado a WASM: mismo SQL, mismo comportamiento).
 - ✅ El rechazo a arrancar en Railway sin `DATABASE_URL`, y sin
   `CONSOLE_PASSWORD` en la consola.
+- ⚠ CI **no bloquea el despliegue**: Railway despliega al empujar a `main`, no
+  al terminar el workflow. Si se quiere que espere, hay que activar *Wait for
+  CI* en el servicio.
 - ⚠ **No probado**: el driver `pg` contra un servidor Postgres real y la
   resolución de red de Railway. Es el único tramo que sólo se puede verificar
   desplegando.

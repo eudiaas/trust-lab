@@ -387,9 +387,26 @@ se genera ninguna CRL. Y aunque los hubiera, faltaría el `ServiceSupplyPoint`
 entrada afirmaría el servicio sin decir dónde está.
 
 La norma, por cierto, no nombra CRL ni OCSP en ninguna parte: describe el
-servicio por su función, no por su mecanismo. Para los WRPRC el mecanismo que sí
-implementamos es la status list, así que ahí sería declarable — pero exige emitir
-el supply point, y hoy no se hace.
+servicio por su función, no por su mecanismo.
+
+**Y para los WRPRC declararlo sobraría**, no es que falte trabajo. Cada WRPRC
+lleva dentro su propio `status.status_list = { idx, uri }` (TS 119 475):
+
+```json
+"status": { "status_list": { "idx": 829, "uri": "https://…/status/wrprc" } }
+```
+
+El verificador que tiene el certificado ya sabe dónde mirar y en qué posición —
+no necesita descubrirlo por la lista. Y para saber que esa status list la firma
+quien debe, le basta la entrada que ya existe: la lista publica el certificado
+firmante del proveedor, que es el mismo que firma su status list.
+
+El único caso en que aportaría algo es el que contempla §1 del borrador de Token
+Status List: que el Status Issuer sea *"an entity that has been authorized by
+the Issuer"*, con la delegación expresada por el EKU `id-kp-oauthStatusSigning`
+de su §10 (OID todavía TBD). Ahí sí, la lista sería el sitio natural para
+publicar el certificado del delegado, porque no se deduce de ninguna otra
+parte.
 
 ### Qué certificado publica cada lista
 

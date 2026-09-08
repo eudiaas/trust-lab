@@ -13,7 +13,7 @@ import { inMemorySigner } from '../../signer/src/index.mjs';
 import { buildTrustedListXml, signTrustedListXml, assertAnnexB } from '../../tl-xml/src/index.mjs';
 import { AV_TL_PROFILE, assertAvProfile } from '../../tl-xml/src/av-profile.mjs';
 import { buildLote, signLoteCompact, verifyLoteCompact, assertLote, assertIdentityNaming, staleRevocationFields, LIST_PROFILES } from '../../lote/src/index.mjs';
-import { buildWrprc, signWrprcCompact, assertWrprc, decodeWRPRC, detectEdition, droppedByEdition } from '../../wrprc/src/index.mjs';
+import { buildWrprc, signWrprcCompact, verifyWrprcCompact, assertWrprc, decodeWRPRC, detectEdition, droppedByEdition } from '../../wrprc/src/index.mjs';
 import { assertRegistry, toWrpacSpec, toWrprcInput, newRegistry } from '../../registry/src/index.mjs';
 import * as x509 from '@peculiar/x509';
 import { randomInt } from 'node:crypto';
@@ -402,6 +402,12 @@ export async function issueWrprc(store, crypto, { registryId, serviceId, useId, 
   // unico entre relying parties, asi que dos RP con el mismo par
   // servicio/finalidad —el caso normal cuando las dos salen del mismo
   // esqueleto— se pisarian el certificado la una a la otra sin decir nada.
+  // Releerlo antes de guardarlo, como las listas. Un artefacto que no se
+  // verifica es un artefacto cuyo formato nadie comprueba: asi paso nueve dias
+  // emitiendo WRPRC cuya firma no era base64url.
+  const stored = await loadKey(store, signerName);
+  await verifyWrprcCompact(jwt, stored.crt[0]);
+
   const artifactId = wrprcArtifactId(registryId, serviceId, useId);
   const artifact = await store.artifacts.put({
     kind: 'wrprc', id: artifactId, sequence: Math.floor(Date.now() / 1000), signer: signerName,

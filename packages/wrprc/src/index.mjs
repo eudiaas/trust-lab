@@ -9,6 +9,7 @@
 // @owf/eudi-wrprc, que implementa la **v1.2.1**. Ver EDITIONS más abajo: entre
 // v1.1.1 y v1.2.1 cambiaron tres cosas que rompen la interoperabilidad, y
 // ninguna es cosmética.
+import { toBase64Url } from '../../signer/src/index.mjs';
 import {
   wrprc,
   credential,
@@ -152,9 +153,31 @@ export async function signWrprcCompact(payload, signer, keyId) {
     algorithm: 'ES256',
     certificates: signer.certificateChain,
     keyId,
-    signer: (data) => signer.sign(data),
+    // `signWRPRC` concatena lo que devuelva el signer detras del signing
+    // input, asi que espera la firma YA en base64url —no bytes—, igual que
+    // `signLoTE`. Devolviendo el Uint8Array tal cual, JavaScript lo convertia
+    // a texto al concatenar y la firma salia como "241,5,101,54,…": los bytes
+    // en decimal separados por comas. El JWS resultante no verifica.
+    signer: async (data) => toBase64Url(await signer.sign(data)),
   });
   return typeof signed === 'string' ? signed : (signed.jwt ?? signed.jws ?? signed);
+}
+
+/**
+ * Verificacion de vuelta, como la haria un consumidor.
+ *
+ * Existe porque su ausencia es la razon de que lo anterior durase: las listas
+ * se relegan y se verifican antes de guardarse, y los WRPRC no. Un artefacto
+ * que no se relee es un artefacto cuyo formato nadie comprueba.
+ */
+export async function verifyWrprcCompact(compactJwt, signerCertPem) {
+  const { importX509, jwtVerify } = await import('jose');
+  const key = await importX509(signerCertPem, 'ES256');
+  const { payload, protectedHeader } = await jwtVerify(compactJwt, key, { clockTolerance: 300 });
+  if (protectedHeader.typ !== 'rc-wrp+jwt') {
+    throw new Error(`typ inesperado: ${protectedHeader.typ}`);
+  }
+  return { payload, header: protectedHeader };
 }
 
 /** Validación del payload + lectura de vuelta del token firmado. */

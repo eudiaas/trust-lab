@@ -1,0 +1,22 @@
+trust-lab
+Copyright 2026 espuni S.L.
+
+This product includes software developed at espuni S.L.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not
+use this file except in compliance with the License. You may obtain a copy of
+the License in the LICENSE file distributed with this work, or at
+http://www.apache.org/licenses/LICENSE-2.0
+
+---
+
+This project builds on libraries published by the OpenWallet Foundation
+(@owf/eudi-tl, @owf/eudi-lote, @owf/eudi-wrprc, @owf/token-status-list), which
+are themselves Apache-2.0 licensed. They are consumed as published npm
+dependencies and no part of them is redistributed in this repository.
+
+The technical specifications this project implements — ETSI TS 119 612,
+TS 119 602, TS 119 475, TS 119 411-8 and the IETF Token Status List draft — are
+published by their respective standards bodies and are not distributed here.
+Clause numbers and short quotations appear in comments and documentation for
+the sole purpose of citing the requirement each piece of code implements.

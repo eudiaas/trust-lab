@@ -295,3 +295,18 @@ listarlos es lo que hace operable el almacén—; sólo la privada va cifrada.
 En el almacén de fichero el cifrado es opcional: ahí el material no sale de la
 máquina del operador. Sigue siendo material de laboratorio y nada de esto vale
 fuera de un entorno de pruebas.
+
+## Licencia
+
+**Apache-2.0** (ver [`LICENSE`](LICENSE) y [`NOTICE`](NOTICE)).
+
+Se elige por compatibilidad hacia el ecosistema del que este proyecto ya
+depende: las cuatro librerías de la OpenWallet Foundation que usa
+(`@owf/eudi-tl`, `@owf/eudi-lote`, `@owf/eudi-wrprc`,
+`@owf/token-status-list`) son Apache-2.0, y es la licencia por defecto de sus
+proyectos. Con la misma licencia, el código de aquí puede moverse hacia allí
+sin recompatibilizar nada.
+
+El resto del árbol de dependencias es permisivo —MIT, Apache-2.0, BSD-3-Clause,
+ISC, 0BSD— sin ninguna licencia copyleft ni de uso restringido, así que no hay
+obligaciones que se propaguen a quien use esto.

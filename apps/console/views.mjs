@@ -799,9 +799,13 @@ export function listMembersPage({ id, item, doc, esAv, identityHelp, candidatos,
     const cc = esAv
       ? `<input type="text" name="cc:${esc(c.keyName)}" value="${esc(c.cc ?? 'ES')}" size="2"
            maxlength="2" title="Estado miembro que notifica al PAAP" style="width:3.2rem">`
-      : `<select name="rev:${esc(c.keyName)}" title="clave del servicio de revocacion (opcional)">
-           <option value="">sin revocacion</option>
-           ${keys.filter((k) => k !== c.keyName).map((k) => `<option>${esc(k)}</option>`).join('')}
+      : `<select name="rev:${esc(c.keyName)}"
+           title="clave que firma la informacion de estado de esta entidad">
+           <option value="">no declara servicio de estado</option>
+           ${keys
+             .filter((k) => k !== c.keyName)
+             .map((k) => `<option${k === c.rev ? ' selected' : ''}>${esc(k)}</option>`)
+             .join('')}
          </select>`;
     return `<tr>
       <td>${check}</td>
@@ -849,8 +853,18 @@ export function listMembersPage({ id, item, doc, esAv, identityHelp, candidatos,
       <div class="card">
         <h3>Que contiene esta lista</h3>
         <div class="meta">Marca lo que debe publicar. ${esc(identityHelp ?? '')}</div>
+        ${
+          esAv
+            ? ''
+            : `<div class="meta">La columna <strong>servicio de estado</strong> es opcional: los
+               anexos de TS 119 602 admiten dos tipos de servicio por entidad —emision y
+               revocacion— pero no obligan a declarar el segundo. Solo tiene sentido si esa
+               entidad publica informacion de validez de lo que emite; en ese caso, la clave que
+               la firma. Dejandolo vacio, la entidad se publica con su servicio de emision y nada
+               mas, que es lo honesto cuando no hay estado que publicar.</div>`
+        }
         <table><tr><th></th><th>Clave</th><th>Subject</th><th>Nombre publicado</th>
-          <th>${esAv ? 'EM' : 'Revocacion'}</th></tr>
+          <th>${esAv ? 'EM' : 'Servicio de estado'}</th></tr>
           ${huerfanoRows}${candidatos.map(row).join('')}
         </table>
         <div style="margin-top:.8rem"><button class="primary">Guardar seleccion</button>

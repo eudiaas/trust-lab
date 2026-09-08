@@ -866,9 +866,13 @@ export async function listCandidates(store, id) {
   const certOf = (doc) => identityCertOf(doc, state);
 
   const dentro = new Map();
+  const revocacionDe = new Map();   // huella de emision -> huella de su servicio de estado
   for (const p of state.providers ?? []) {
     for (const f of ['certPem', 'issuanceCertPem']) {
-      if (p[f]) dentro.set(fingerprint(p[f]), p);
+      if (p[f]) {
+        dentro.set(fingerprint(p[f]), p);
+        if (p.revocationCertPem) revocacionDe.set(fingerprint(p[f]), fingerprint(p.revocationCertPem));
+      }
     }
   }
 
@@ -891,6 +895,7 @@ export async function listCandidates(store, id) {
       role: d.role ?? null, ca: !!d.ca, expired: d.expired ?? null,
       dentro: !!actual, displayName: actual?.name ?? derivarNombre(doc.subject),
       cc: actual?.informationUri?.[0]?.slice(-2)?.toUpperCase() ?? null,
+      revHuella: revocacionDe.get(fp) ?? null,
       tambien: [],
     };
 
@@ -913,6 +918,15 @@ export async function listCandidates(store, id) {
     }
   }
   const candidatos = [...porHuella.values()];
+  // Resolver la huella del servicio de estado a un nombre de clave, para que
+  // el desplegable recuerde lo que ya estaba declarado.
+  const nombrePorHuella = new Map();
+  for (const name of await store.keys.list()) {
+    const doc = await raw.get(name);
+    const cert = certOf(doc);
+    if (cert) nombrePorHuella.set(fingerprint(cert), name);
+  }
+  for (const c of candidatos) c.rev = c.revHuella ? nombrePorHuella.get(c.revHuella) ?? null : null;
 
   // Lo que la lista publica y no tiene clave aqui. Se ofrece para poder
   // QUITARLO, que es justo lo que hace falta con lo sembrado.

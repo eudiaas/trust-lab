@@ -373,7 +373,15 @@ Los dos comandos no son intercambiables:
 - **`add-provider`** puebla la **AV Trusted List** (XML) y necesita además el
   código del Estado miembro que notifica al PAAP.
 - **`add-entity`** puebla una **LoTE** (JSON en JWS) y admite una segunda clave
-  para el servicio de revocación.
+  para el **servicio de estado**, que es opcional (ver abajo).
+
+**El servicio de estado no se declara por defecto.** Los anexos de TS 119 602
+definen dos tipos de servicio por entidad —`…/Issuance` y `…/Revocation`— y
+dicen que esas URI *"may be used … to the exclusion of any other"*: son los
+únicos valores admitidos, no dos servicios obligatorios. Declarar el de
+revocación afirma, en una lista de confianza, que esa entidad **publica
+información de validez** y con qué clave la firma. Si no la publica, es una
+afirmación falsa, así que solo sale cuando se le da una clave.
 
 ### Qué certificado publica cada lista
 

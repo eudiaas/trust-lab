@@ -118,11 +118,15 @@ const iso = (d) => new Date(d).toISOString().replace(/\.\d+Z$/, 'Z');
 /**
  * Construye el documento LoTE (sin firmar) desde el estado del entorno.
  *
- * Cada entidad lleva dos servicios —emisión y revocación— porque el modelo de
- * confianza los empareja: la lista de estado tiene que estar firmada por la
- * misma entidad que emitió lo que se revoca. Si un proveedor de laboratorio no
- * publica estado, se le pasa el mismo certificado en los dos: es explícito y no
- * finge una separación que no existe.
+ * El servicio de **revocación es opcional**. Los anexos dicen que las dos URI
+ * —`…/Issuance` y `…/Revocation`— *"may be used ... to the exclusion of any
+ * other"*: son los únicos valores admitidos, no dos servicios obligatorios.
+ *
+ * Antes se emitían siempre los dos, y cuando no había certificado de revocación
+ * se repetía el de emisión. Eso no era "explícito": era **declarar en una lista
+ * de confianza que la entidad publica información de estado** —y con qué clave
+ * la firma— cuando puede no publicar ninguna. Una lista de confianza que afirma
+ * un servicio inexistente es peor que una que no lo menciona.
  */
 export function buildLote(state, now = new Date()) {
   const profile = LIST_PROFILES[state.loteType];
@@ -136,17 +140,19 @@ export function buildLote(state, now = new Date()) {
       .addCertificate(pemToBase64Der(p.issuanceCertPem));
     if (profile.serviceStatuses) issuance.status(p.status ?? profile.serviceStatuses[0], now);
 
-    const revocation = service()
-      .name(`${p.name} — revocation`, lang)
-      .type(`${profile.svc}/Revocation`)
-      .addCertificate(pemToBase64Der(p.revocationCertPem ?? p.issuanceCertPem));
-    if (profile.serviceStatuses) revocation.status(p.status ?? profile.serviceStatuses[0], now);
+    let revocation = null;
+    if (p.revocationCertPem) {
+      revocation = service()
+        .name(`${p.name} — revocation`, lang)
+        .type(`${profile.svc}/Revocation`)
+        .addCertificate(pemToBase64Der(p.revocationCertPem));
+      if (profile.serviceStatuses) revocation.status(p.status ?? profile.serviceStatuses[0], now);
+    }
 
     const entity = trustedEntity()
       .name(p.name, lang)
       .tradeName(p.tradeName ?? p.name, lang)
       .addService(issuance.build())
-      .addService(revocation.build())
       .postalAddress(
         {
           Country: p.address?.country ?? state.address.country,
@@ -156,6 +162,7 @@ export function buildLote(state, now = new Date()) {
         },
         lang,
       );
+    if (revocation) entity.addService(revocation.build());
     if (p.informationUri) entity.infoUri(p.informationUri, lang);
     if (p.email) entity.email(p.email, lang);
     return entity.build();

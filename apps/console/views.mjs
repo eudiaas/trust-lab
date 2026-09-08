@@ -114,24 +114,35 @@ const badge = (item) => {
 };
 
 export function dashboard({ items, rps, signers, flash }) {
-  const cards = items
-    .map(
-      (i) => `<div class="card">
+  // Las status lists no van con las listas de confianza tampoco aqui: no dicen
+  // en quien se confia, y ademas su firmante no se elige — lo impone su
+  // emisor. Mezclarlas obligaba a pintar un desplegable que en su caso no
+  // significa nada.
+  const confianza = items.filter((i) => i.kind !== 'token-status-list');
+  const revocacion = items.filter((i) => i.kind === 'token-status-list');
+
+  const card = (i) => `<div class="card">
       <h3>${esc(i.title)} ${badge(i)} ${i.nonNormative ? '<span class="pill warn">no normativo</span>' : ''}</h3>
-      <div class="meta">${esc(i.type)} · ${i.entries} entrada(s)${
-        i.published ? ` · publicada #${i.published.sequence}` : ''
-      }${i.published?.nextUpdate ? ` · vence ${esc(new Date(i.published.nextUpdate).toISOString().slice(0, 16).replace('T', ' '))}` : ''}</div>
+      <div class="meta">${esc(i.type)} · ${i.entries} ${
+        i.kind === 'token-status-list' ? 'revocada(s)' : 'entrada(s)'
+      }${i.published ? ` · publicada #${i.published.sequence}` : ''}${
+        i.published?.nextUpdate
+          ? ` · vence ${esc(new Date(i.published.nextUpdate).toISOString().slice(0, 16).replace('T', ' '))}`
+          : ''
+      }${i.issuer ? ` · revoca ${esc(i.issuer)}` : ''}</div>
       ${
         i.blockers.length
           ? `<ul class="blockers">${i.blockers.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>`
-          : `<form class="inline" method="post" action="/lists/${encodeURIComponent(i.id)}/build">
-               <select name="signer">${i.signers.map((s) => `<option>${esc(s)}</option>`).join('')}</select>
-               <button class="primary">Emitir</button></form>
-             <span class="mono" style="color:var(--dim)">${esc(i.url ?? '')}</span>`
+          : i.kind === 'token-status-list'
+            ? `<form class="inline" method="post" action="/status/${encodeURIComponent(i.id)}/build">
+                 <button class="primary">Reemitir${i.issuerKey ? ` con ${esc(i.issuerKey)}` : ''}</button></form>
+               <span class="mono" style="color:var(--dim)">${esc(i.url ?? '')}</span>`
+            : `<form class="inline" method="post" action="/lists/${encodeURIComponent(i.id)}/build">
+                 <select name="signer">${i.signers.map((s) => `<option>${esc(s)}</option>`).join('')}</select>
+                 <button class="primary">Emitir</button></form>
+               <span class="mono" style="color:var(--dim)">${esc(i.url ?? '')}</span>`
       }
-    </div>`,
-    )
-    .join('');
+    </div>`;
 
   const rpRows = rps
     .map(
@@ -153,7 +164,11 @@ export function dashboard({ items, rps, signers, flash }) {
         ? ''
         : `<div class="flash bad">No hay ningun firmante de listas. Sin el, ninguna lista se puede emitir: crea uno en <a href="/keys">Claves</a>.</div>`
     }
-    <h2>Listas</h2>${cards || '<p class="meta">No hay ninguna lista definida.</p>'}
+    <h2>Listas de confianza</h2>
+    ${confianza.map(card).join('') || '<p class="meta">No hay ninguna lista definida.</p>'}
+    <h2>Revocacion</h2>
+    <p class="meta">Una por emisor de certificados de registro, firmada por el.</p>
+    ${revocacion.map(card).join('') || '<p class="meta">No hay ninguna status list.</p>'}
     <h2>Relying parties</h2>
     <table><tr><th>Entidad</th><th>Registro</th><th>Servicios</th><th>Finalidades</th><th></th></tr>${rpRows}</table>`,
   });
@@ -299,11 +314,18 @@ export function keysPage({ keys, cas = [], roles = {}, schemes, flash }) {
     <h2>Emitir</h2>
     <div class="card">
       <h3>Firmante de listas (TLSO)</h3>
-      <div class="meta">Perfil de la clausula 5.7.1: CA=false, KeyUsage acotado,
-      EKU id-tsl-kp-tslSigning y un subject cuyo C y O salen del esquema elegido.</div>
+      <div class="meta">El subject sale del esquema que elijas: <span class="mono">C</span> del
+      Scheme Territory y <span class="mono">O</span> del Scheme operator name. Esa regla es comun
+      a los dos formatos —TS 119 612 clausula 5.7.1 para la lista XML, TS 119 602 clausula 6.8.0
+      para las LoTE— asi que <strong>un mismo firmante sirve para todas las listas que declaren
+      el mismo operador y territorio</strong>.
+      <br>El resto del perfil que se emite (CA=false, KeyUsage acotado a digitalSignature y
+      nonRepudiation, EKU <span class="mono">id-tsl-kp-tslSigning</span>, SKI) lo pide
+      <strong>solo</strong> TS 119 612: TS 119 602 no dice nada del certificado mas alla de los
+      nombres. Se emite igual para todos porque cumplir de mas no rompe nada.</div>
       <form class="inline" method="post" action="/keys/tlso">
         <input type="text" name="name" placeholder="nombre" required>
-        <select name="scheme">${schemes.map((s) => `<option value="${esc(s.id)}">${esc(s.schemeName ?? s.id)}</option>`).join('')}</select>
+        <select name="scheme">${schemes.map((s) => `<option value="${esc(s.id)}">${esc(s.displayName ?? s.schemeName ?? s.id)}</option>`).join('')}</select>
         <button class="primary">Emitir TLSO</button>
       </form>
     </div>

@@ -6,6 +6,8 @@
   "lang": "en",
   "schemeOperatorName": "espuni Trust Lab",
   "schemeName": "EU:List containing the information notified by EU Member States on authorised Proof of Age Attestation Providers.",
+  "displayName": "Trust Lab list of AV providers (TEST)",
+  "_displayName": "Nombre para la interfaz. El `schemeName` lo fija el perfil de la Comision (tabla I.1) y `assertAvProfile` lo comprueba palabra por palabra: no se puede armonizar sin dejar de ser conforme.",
   "territory": "EU",
   "address": {
     "street": "Calle de Prueba 1",

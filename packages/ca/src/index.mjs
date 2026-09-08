@@ -119,7 +119,7 @@ export async function mintTlSigner(crypto, { schemeOperatorName, territory, sign
  * certificado cualificado se emite en un Estado miembro concreto. Fallar aquí
  * rechazaría el certificado real, que es peor que avisar.
  */
-export function assertTlsoProfile(certPem, { schemeOperatorName, territory } = {}, { checkNaming = true } = {}) {
+export function assertTlsoProfile(certPem, { schemeOperatorName, territory, kind } = {}, { checkNaming = true } = {}) {
   const cert = new x509.X509Certificate(certPem);
   const problems = [];
   const warnings = [];
@@ -131,8 +131,26 @@ export function assertTlsoProfile(certPem, { schemeOperatorName, territory } = {
   // sirve como firmante en general —una lista LoTE, una status list— la
   // pregunta es estructural: CA=false, KeyUsage acotado, EKU y SKI.
   if (checkNaming) {
-    if (c !== territory) warnings.push(`5.7.1: Subject C=${c} y Scheme Territory=${territory} no coinciden (la AV TL de producción hace lo mismo: C=LU con territorio EU)`);
-    if (o !== schemeOperatorName) problems.push(`5.7.1: Subject O=${o} debe coincidir con Scheme operator name (${schemeOperatorName})`);
+    // La regla de nombres es comun a los dos formatos, pero NO tiene la misma
+    // fuerza. TS 119 602 clausula 6.8.0 dice, sin excepcion: "The 'Country
+    // code' and 'Organization' fields in Subject Distinguished Name of the
+    // certificate supporting the AdES digital signature SHALL match
+    // respectively the 'Scheme Territory' and one of the 'Scheme operator
+    // name' values". En TS 119 612 la practica de la propia Comision la
+    // contradice —la AV TL de produccion declara territorio EU y la firma con
+    // C=LU, porque "EU" no es un pais ISO 3166— asi que alli es aviso.
+    const esLote = kind === 'lote-json';
+    if (c !== territory) {
+      const m = `Subject C=${c} y Scheme Territory=${territory} no coinciden`;
+      if (esLote) problems.push(`TS 119 602 6.8.0: ${m} (aqui es "shall", sin excepcion)`);
+      else warnings.push(`5.7.1: ${m} (la AV TL de producción hace lo mismo: C=LU con territorio EU)`);
+    }
+    if (o !== schemeOperatorName) {
+      problems.push(
+        `${esLote ? 'TS 119 602 6.8.0' : '5.7.1'}: Subject O=${o} debe coincidir con ` +
+          `Scheme operator name (${schemeOperatorName})`,
+      );
+    }
   }
 
   const bc = cert.getExtension('2.5.29.19');

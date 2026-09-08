@@ -153,7 +153,13 @@ const server = createServer(async (req, res) => {
             : null,
         });
       }
-      const schemes = (await store.docs.list('*')).filter((d) => d.kind === 'etsi-tl-xml');
+      // Cualquier lista sirve como esquema del que derivar el subject: la regla
+      // de nombres es la misma en TS 119 612 (5.7.1) y en TS 119 602 (6.8.0),
+      // y en el laboratorio las seis declaran el mismo operador. Ofrecer solo
+      // la XML daba a entender que el firmante era de la AV TL.
+      const schemes = (await store.docs.list('*')).filter(
+        (d) => d.kind === 'etsi-tl-xml' || d.kind === 'lote-json',
+      );
       const cas = keys.filter((k) => k.ca).map((k) => k.name);
       const roles = Object.fromEntries(Object.keys(SIGNER_ROLES).map((k) => [k, signerRole(k)]));
       return send(res, 200, views.keysPage({ keys, cas, roles, schemes, flash }));
@@ -282,7 +288,7 @@ const server = createServer(async (req, res) => {
       const problems = doc.walletRelyingParty ? assertRegistry(doc) : [];
       return send(res, 200, views.docPage({
         id: parts[1], doc, problems, flash,
-        title: doc.schemeName ?? doc.walletRelyingParty?.legalName ?? parts[1],
+        title: doc.displayName ?? doc.schemeName ?? doc.walletRelyingParty?.legalName ?? parts[1],
         back: doc.walletRelyingParty ? '/rps' : '/lists',
       }));
     }

@@ -184,10 +184,26 @@ equivalente en la consola** y se indica en cada paso.
 
 ### 5.1 Firmante de listas (TLSO)
 
-Primer requisito de todo: sin él no se firma ninguna lista. Lleva el perfil de
-la **cláusula 5.7.1 de TS 119 612** — `CA=false`, `KeyUsage` acotado a
+Primer requisito de todo: sin él no se firma ninguna lista.
+
+**Uno solo sirve para las seis**, y no por comodidad: lo único que las dos
+normas le exigen en común es el nombre — `C` = Scheme Territory y `O` = Scheme
+operator name (TS 119 612 §5.7.1 para la lista XML, TS 119 602 §6.8.0 para las
+LoTE) — y las seis listas del laboratorio declaran el mismo operador y
+territorio.
+
+El resto del perfil que se emite —`CA=false`, `KeyUsage` acotado a
 `digitalSignature`/`nonRepudiation`, EKU `id-tsl-kp-tslSigning`
-(`0.4.0.2231.3.0`), y un subject cuyos `C` y `O` salen del esquema.
+(`0.4.0.2231.3.0`), SKI— lo pide **solo TS 119 612**. TS 119 602 no dice nada
+del certificado más allá de los nombres; solo del formato de firma (JAdES
+baseline B). Se emite igual para todos porque cumplir de más no rompe nada.
+
+⚠ La regla de nombres **no tiene la misma fuerza en los dos**. En TS 119 602
+§6.8.0 es un *shall* sin excepción, así que un `C` que no cuadre con el
+territorio **es un error** en una LoTE. En TS 119 612 se queda en aviso, porque
+la propia Comisión lo incumple: la AV TL de producción declara territorio `EU` y
+la firma con `C=LU` — «EU» no es un país ISO 3166 y un certificado cualificado
+se emite en un Estado miembro concreto.
 
 ```bash
 node apps/cli/index.mjs mint-tl-signer tl-signer av-lab

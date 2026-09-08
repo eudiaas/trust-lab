@@ -99,7 +99,8 @@ export async function readiness(store) {
         blockers.push(p.split('\n')[0]);
       }
       items.push({
-        id: doc.id, kind: doc.kind, title: doc.schemeName ?? doc.id, type: 'AV Trusted List (XML)',
+        id: doc.id, kind: doc.kind, title: doc.displayName ?? doc.schemeName ?? doc.id,
+        schemeName: doc.schemeName ?? null, type: 'AV Trusted List (XML)',
         entries: (doc.providers ?? []).length, signers: validos.map((s) => s.name),
         blockers, published: await published(store, 'lists', doc.id), url: doc.url,
       });
@@ -112,7 +113,8 @@ export async function readiness(store) {
       const profile = LIST_PROFILES[doc.loteType];
       if (!profile) blockers.push(`tipo de lista desconocido: ${doc.loteType}`);
       items.push({
-        id: doc.id, kind: doc.kind, title: doc.schemeName ?? doc.id,
+        id: doc.id, kind: doc.kind, title: doc.displayName ?? doc.schemeName ?? doc.id,
+        schemeName: doc.schemeName ?? null,
         type: `LoTE · ${doc.loteType}`, entries: (doc.providers ?? []).length,
         signers: conformes.map((s) => s.name), blockers,
         published: await published(store, 'lote', doc.id), url: doc.url,
@@ -124,8 +126,11 @@ export async function readiness(store) {
       const revocadas = Object.values(doc.entries ?? {}).filter((e) => e.status !== 'valid').length;
       items.push({
         id: doc.id, kind: doc.kind, title: doc.id, type: 'Status list',
-        entries: revocadas, signers: conformes.map((s) => s.name),
-        blockers: conformes.length ? [] : ['no hay ningun firmante conforme'],
+        entries: revocadas, signers: [],
+        // Su firmante no se elige: lo impone el emisor declarado. Lo que
+        // bloquea aqui no es "no hay firmante conforme" sino "no tiene emisor".
+        blockers: doc.issuerKey ? [] : ['sin emisor asignado: asignalo en Revocacion'],
+        issuerKey: doc.issuerKey ?? null, issuer: doc.issuer ?? null,
         published: await published(store, 'status', doc.id), url: doc.url,
       });
     }

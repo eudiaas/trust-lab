@@ -372,16 +372,24 @@ Los dos comandos no son intercambiables:
 
 - **`add-provider`** puebla la **AV Trusted List** (XML) y necesita además el
   código del Estado miembro que notifica al PAAP.
-- **`add-entity`** puebla una **LoTE** (JSON en JWS) y admite una segunda clave
-  para el **servicio de estado**, que es opcional (ver abajo).
+- **`add-entity`** puebla una **LoTE** (JSON en JWS).
 
-**El servicio de estado no se declara por defecto.** Los anexos de TS 119 602
-definen dos tipos de servicio por entidad —`…/Issuance` y `…/Revocation`— y
-dicen que esas URI *"may be used … to the exclusion of any other"*: son los
-únicos valores admitidos, no dos servicios obligatorios. Declarar el de
-revocación afirma, en una lista de confianza, que esa entidad **publica
-información de validez** y con qué clave la firma. Si no la publica, es una
-afirmación falsa, así que solo sale cuando se le da una clave.
+**Cada entidad se publica solo con su servicio de emisión.** Los anexos admiten
+un segundo tipo, `…/Revocation`, para *"a service providing validity status
+information"* — las dos URI *"may be used … to the exclusion of any other"*, o
+sea que son los únicos valores admitidos y no dos servicios obligatorios.
+
+No se emite porque **no hay ningún servicio de estado que declarar**. Para un
+X.509 —el caso de los access certificates— el mecanismo habitual es CRL u OCSP,
+y aquí no hay ni lo uno ni lo otro: ninguna CA emite `CRLDistributionPoints` ni
+se genera ninguna CRL. Y aunque los hubiera, faltaría el `ServiceSupplyPoint`
+(cláusula 6.6.7), que es la URI **donde** se obtiene el estado: sin ella la
+entrada afirmaría el servicio sin decir dónde está.
+
+La norma, por cierto, no nombra CRL ni OCSP en ninguna parte: describe el
+servicio por su función, no por su mecanismo. Para los WRPRC el mecanismo que sí
+implementamos es la status list, así que ahí sería declarable — pero exige emitir
+el supply point, y hoy no se hace.
 
 ### Qué certificado publica cada lista
 
@@ -844,7 +852,7 @@ new-rp <id> "<razón social>" <valor-id> [país] [lista-revocación] [tipo-id]
 issue-wrprc <registro> <servicio> <finalidad> <firmante>
 
 add-provider <estado> <clave> "<nombre>" <CC>       PAAP en la AV TL (el DS)
-add-entity <estado> <clave-emisión> "<nombre>" [clave-revocación]   ancla en una LoTE
+add-entity <estado> <clave-emisión> "<nombre>"      ancla en una LoTE
 remove-provider <estado> <índice|nombre>            quita una entrada
 build-list <estado> <firmante>                      firma la AV TL (XML)
 build-lote <estado> <firmante>                      firma una LoTE (JSON/JWS)

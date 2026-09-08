@@ -99,17 +99,16 @@ const cmds = {
     console.log(`anadido ${displayName} a ${stateId} (${state.providers.length} en total)`);
   },
 
-  // trustlab add-entity <estado> <clave-emision> "<nombre>" [clave-revocacion]
-  async 'add-entity'([stateId, issuanceKey, displayName, revocationKey]) {
+  // trustlab add-entity <estado> <clave-emision> "<nombre>"
+  //   Sin servicio de estado: ver la nota en packages/lote.
+  async 'add-entity'([stateId, issuanceKey, displayName]) {
     const state = await store.docs.get('*', docId(stateId));
     const issuance = await store.keys.get(issuanceKey);
-    const revocation = revocationKey ? await store.keys.get(revocationKey) : null;
     // Cual de los certificados del par se publica lo decide el perfil de la
     // lista (TS 119 602, anexos D-G), no una regla fija.
     state.providers.push({
       name: displayName,
       issuanceCertPem: ops.identityCertOf(issuance, state),
-      ...(revocation ? { revocationCertPem: ops.identityCertOf(revocation, state) } : {}),
     });
     await store.docs.put(state.kind, docId(stateId), state);
     console.log(`anadido ${displayName} a ${stateId} (${state.providers.length} en total)`);

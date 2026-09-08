@@ -12,7 +12,7 @@ import { mintWrpac, assertWrpacProfile } from '../../ca/src/wrpac.mjs';
 import { inMemorySigner } from '../../signer/src/index.mjs';
 import { buildTrustedListXml, signTrustedListXml, assertAnnexB } from '../../tl-xml/src/index.mjs';
 import { AV_TL_PROFILE, assertAvProfile } from '../../tl-xml/src/av-profile.mjs';
-import { buildLote, signLoteCompact, verifyLoteCompact, assertLote, assertIdentityNaming, LIST_PROFILES } from '../../lote/src/index.mjs';
+import { buildLote, signLoteCompact, verifyLoteCompact, assertLote, assertIdentityNaming, staleRevocationFields, LIST_PROFILES } from '../../lote/src/index.mjs';
 import { buildWrprc, signWrprcCompact, assertWrprc, decodeWRPRC, detectEdition, droppedByEdition } from '../../wrprc/src/index.mjs';
 import { assertRegistry, toWrpacSpec, toWrprcInput, newRegistry } from '../../registry/src/index.mjs';
 import * as x509 from '@peculiar/x509';
@@ -188,7 +188,7 @@ export async function buildLoteList(store, crypto, { id, signerName }) {
   const profile = LIST_PROFILES[state.loteType];
   return { id, sequence: state.sequenceNumber, artifact, nextUpdate: check.nextUpdate,
     entities: check.entities, url: state.url, nonNormative: profile?.nonNormative,
-    warnings: naming.warnings };
+    warnings: [...naming.warnings, ...staleRevocationFields(state)] };
 }
 
 /** Cambia una posicion de la status list. NO publica: hay que reemitir. */
@@ -866,13 +866,9 @@ export async function listCandidates(store, id) {
   const certOf = (doc) => identityCertOf(doc, state);
 
   const dentro = new Map();
-  const revocacionDe = new Map();   // huella de emision -> huella de su servicio de estado
   for (const p of state.providers ?? []) {
     for (const f of ['certPem', 'issuanceCertPem']) {
-      if (p[f]) {
-        dentro.set(fingerprint(p[f]), p);
-        if (p.revocationCertPem) revocacionDe.set(fingerprint(p[f]), fingerprint(p.revocationCertPem));
-      }
+      if (p[f]) dentro.set(fingerprint(p[f]), p);
     }
   }
 
@@ -895,7 +891,6 @@ export async function listCandidates(store, id) {
       role: d.role ?? null, ca: !!d.ca, expired: d.expired ?? null,
       dentro: !!actual, displayName: actual?.name ?? derivarNombre(doc.subject),
       cc: actual?.informationUri?.[0]?.slice(-2)?.toUpperCase() ?? null,
-      revHuella: revocacionDe.get(fp) ?? null,
       tambien: [],
     };
 
@@ -918,15 +913,6 @@ export async function listCandidates(store, id) {
     }
   }
   const candidatos = [...porHuella.values()];
-  // Resolver la huella del servicio de estado a un nombre de clave, para que
-  // el desplegable recuerde lo que ya estaba declarado.
-  const nombrePorHuella = new Map();
-  for (const name of await store.keys.list()) {
-    const doc = await raw.get(name);
-    const cert = certOf(doc);
-    if (cert) nombrePorHuella.set(fingerprint(cert), name);
-  }
-  for (const c of candidatos) c.rev = c.revHuella ? nombrePorHuella.get(c.revHuella) ?? null : null;
 
   // Lo que la lista publica y no tiene clave aqui. Se ofrece para poder
   // QUITARLO, que es justo lo que hace falta con lo sembrado.
@@ -999,12 +985,7 @@ export async function setProviders(store, { id, seleccion = [] }) {
         certPem: doc.crt[0],
       });
     } else {
-      const revocacion = sel.revocationKeyName ? await raw.get(sel.revocationKeyName) : null;
-      providers.push({
-        name,
-        issuanceCertPem: identityCertOf(doc, state),
-        ...(revocacion?.crt?.length ? { revocationCertPem: identityCertOf(revocacion, state) } : {}),
-      });
+      providers.push({ name, issuanceCertPem: identityCertOf(doc, state) });
     }
   }
 

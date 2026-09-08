@@ -796,17 +796,13 @@ export function listMembersPage({ id, item, doc, esAv, identityHelp, candidatos,
   const row = (c) => {
     const check = `<input type="checkbox" name="sel" value="key:${esc(c.keyName)}"
       id="c-${esc(c.keyName)}" ${c.dentro ? 'checked' : ''}>`;
+    // Solo la AV TL pide un dato extra por entrada (el Estado miembro que
+    // notifica). Las LoTE no: aqui hubo una columna de servicio de estado y se
+    // retiro, porque no hay ningun servicio de estado que declarar.
     const cc = esAv
       ? `<input type="text" name="cc:${esc(c.keyName)}" value="${esc(c.cc ?? 'ES')}" size="2"
            maxlength="2" title="Estado miembro que notifica al PAAP" style="width:3.2rem">`
-      : `<select name="rev:${esc(c.keyName)}"
-           title="clave que firma la informacion de estado de esta entidad">
-           <option value="">no declara servicio de estado</option>
-           ${keys
-             .filter((k) => k !== c.keyName)
-             .map((k) => `<option${k === c.rev ? ' selected' : ''}>${esc(k)}</option>`)
-             .join('')}
-         </select>`;
+      : '';
     return `<tr>
       <td>${check}</td>
       <td><label for="c-${esc(c.keyName)}" class="mono">${esc(c.keyName)}</label>
@@ -816,7 +812,7 @@ export function listMembersPage({ id, item, doc, esAv, identityHelp, candidatos,
       <td class="meta mono" style="max-width:24rem">${esc(c.subject ?? '')}</td>
       <td><input type="text" name="name:${esc(c.keyName)}" value="${esc(c.displayName ?? '')}"
         placeholder="nombre publicado" size="26"></td>
-      <td>${cc}</td>
+      ${esAv ? `<td>${cc}</td>` : ''}
     </tr>`;
   };
 
@@ -828,7 +824,7 @@ export function listMembersPage({ id, item, doc, esAv, identityHelp, candidatos,
       <td><label for="o-${esc(h.fingerprint)}">${esc(h.displayName ?? '')}</label>
         <div class="meta"><span class="pill bad">sin clave privada</span></div></td>
       <td class="meta mono">${esc(h.fingerprint.slice(0, 24))}…</td>
-      <td class="meta" colspan="2">No se puede emitir nada con esto. Desmarcalo para quitarlo.</td>
+      <td class="meta">No se puede emitir nada con esto. Desmarcalo para quitarlo.</td>
     </tr>`,
     )
     .join('');
@@ -853,18 +849,8 @@ export function listMembersPage({ id, item, doc, esAv, identityHelp, candidatos,
       <div class="card">
         <h3>Que contiene esta lista</h3>
         <div class="meta">Marca lo que debe publicar. ${esc(identityHelp ?? '')}</div>
-        ${
-          esAv
-            ? ''
-            : `<div class="meta">La columna <strong>servicio de estado</strong> es opcional: los
-               anexos de TS 119 602 admiten dos tipos de servicio por entidad —emision y
-               revocacion— pero no obligan a declarar el segundo. Solo tiene sentido si esa
-               entidad publica informacion de validez de lo que emite; en ese caso, la clave que
-               la firma. Dejandolo vacio, la entidad se publica con su servicio de emision y nada
-               mas, que es lo honesto cuando no hay estado que publicar.</div>`
-        }
         <table><tr><th></th><th>Clave</th><th>Subject</th><th>Nombre publicado</th>
-          <th>${esAv ? 'EM' : 'Servicio de estado'}</th></tr>
+          ${esAv ? '<th>EM</th>' : ''}</tr>
           ${huerfanoRows}${candidatos.map(row).join('')}
         </table>
         <div style="margin-top:.8rem"><button class="primary">Guardar seleccion</button>

@@ -118,15 +118,23 @@ const iso = (d) => new Date(d).toISOString().replace(/\.\d+Z$/, 'Z');
 /**
  * Construye el documento LoTE (sin firmar) desde el estado del entorno.
  *
- * El servicio de **revocación es opcional**. Los anexos dicen que las dos URI
- * —`…/Issuance` y `…/Revocation`— *"may be used ... to the exclusion of any
- * other"*: son los únicos valores admitidos, no dos servicios obligatorios.
+ * **Solo se emite el servicio de emisión.** Los anexos admiten un segundo tipo,
+ * `…/Revocation`, para "a service providing validity status information"; las
+ * dos URI *"may be used ... to the exclusion of any other"*, es decir que son
+ * los únicos valores admitidos y no dos servicios obligatorios.
  *
- * Antes se emitían siempre los dos, y cuando no había certificado de revocación
- * se repetía el de emisión. Eso no era "explícito": era **declarar en una lista
- * de confianza que la entidad publica información de estado** —y con qué clave
- * la firma— cuando puede no publicar ninguna. Una lista de confianza que afirma
- * un servicio inexistente es peor que una que no lo menciona.
+ * No se emite porque **no hay ningún servicio de estado que declarar**. Para un
+ * certificado X.509 —el caso de los access certificates— el mecanismo habitual
+ * es CRL u OCSP, y aquí no hay ni una cosa ni otra: ninguna CA emite
+ * `CRLDistributionPoints` ni se genera ninguna CRL. Y aunque lo hubiera,
+ * faltaría el `ServiceSupplyPoint` (cláusula 6.6.7), que es la URI *donde* se
+ * obtiene el estado: sin ella la entrada afirmaría el servicio sin decir dónde
+ * está, que no le sirve a nadie.
+ *
+ * Nótese que la norma no nombra CRL ni OCSP en ninguna parte: describe el
+ * servicio por su función, no por su mecanismo. Para los WRPRC, el mecanismo
+ * que sí implementamos es la status list — declararla aquí sería posible, pero
+ * exige emitir el supply point, y hoy no se hace.
  */
 export function buildLote(state, now = new Date()) {
   const profile = LIST_PROFILES[state.loteType];
@@ -140,14 +148,6 @@ export function buildLote(state, now = new Date()) {
       .addCertificate(pemToBase64Der(p.issuanceCertPem));
     if (profile.serviceStatuses) issuance.status(p.status ?? profile.serviceStatuses[0], now);
 
-    let revocation = null;
-    if (p.revocationCertPem) {
-      revocation = service()
-        .name(`${p.name} — revocation`, lang)
-        .type(`${profile.svc}/Revocation`)
-        .addCertificate(pemToBase64Der(p.revocationCertPem));
-      if (profile.serviceStatuses) revocation.status(p.status ?? profile.serviceStatuses[0], now);
-    }
 
     const entity = trustedEntity()
       .name(p.name, lang)
@@ -162,7 +162,6 @@ export function buildLote(state, now = new Date()) {
         },
         lang,
       );
-    if (revocation) entity.addService(revocation.build());
     if (p.informationUri) entity.infoUri(p.informationUri, lang);
     if (p.email) entity.email(p.email, lang);
     return entity.build();
@@ -237,6 +236,13 @@ export function signLote(lote, signer, keyId) {
  * `EAA/Issuance` para cualquier lista—, y es la razón de que un tenant
  * instrumental no pudiera publicar una lista de Access CAs.
  */
+/** Entradas que declaran un servicio de estado que este proyecto no emite. */
+export function staleRevocationFields(state) {
+  return (state.providers ?? [])
+    .filter((p) => p.revocationCertPem)
+    .map((p) => `"${p.name}" declara revocationCertPem: se ignora — no se emite servicio de estado`);
+}
+
 export function assertLote(lote, state) {
   const problems = [];
   const profile = LIST_PROFILES[state.loteType];

@@ -180,6 +180,19 @@ export function dashboard({ estado, faltan, rps, svg, flash }) {
   });
 }
 
+// Los seis tipos de la tabla 2 de TS 119 475, con el prefijo semantico que
+// cada uno produce en el certificado (EN 319 412-1 §5.1.3). Vive aqui, junto a
+// su unico consumidor: al reescribir el dashboard se llevo por delante este
+// bloque, que estaba entre las dos funciones, y `/rps` reventaba.
+const ID_TYPE_LABELS = {
+  'http://data.europa.eu/eudi/id/VATIN': 'NIF / VAT (VAT…)',
+  'http://data.europa.eu/eudi/id/EUID': 'EUID registro mercantil (NTR…)',
+  'http://data.europa.eu/eudi/id/LEI': 'LEI (LEI…)',
+  'http://data.europa.eu/eudi/id/EORI-No': 'EORI (EOR…)',
+  'http://data.europa.eu/eudi/id/TIN': 'TIN (VAT… / TIN…)',
+  'http://data.europa.eu/eudi/id/Excise': 'Numero de impuestos especiales (EXC…)',
+};
+
 export function rpsPage({ rps, statusLists = [], flash }) {
   return layout({
     title: 'Relying parties', path: '/rps', flash,

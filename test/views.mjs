@@ -12,7 +12,7 @@ import * as views from '../apps/console/views.mjs';
 
 const MINIMOS = {
   loginPage: {},
-  dashboard: { estado: {}, faltan: [], rps: [], svg: '' },
+  dashboard: { estado: [], faltan: [], rps: [], svg: '' },
   keysPage: { keys: [], cas: [], roles: {}, schemes: [] },
   listsPage: { items: [] },
   listMembersPage: {
@@ -50,7 +50,11 @@ const CON_DATOS = {
     candidatos: [{ name: 'k', subject: 'CN=x' }],
   },
   dashboard: {
-    estado: { tlso: { ok: true, detalle: 'x' }, av: { ok: false, detalle: 'y' } },
+    estado: [
+      { pieza: 'Firmante de listas', donde: '/keys', ok: true, detalle: 'x' },
+      { pieza: 'Lista', donde: '/lists/av-lab', ok: false, parcial: true, detalle: 'y' },
+      { pieza: 'Otra', donde: '/rps', ok: false, detalle: 'z' },
+    ],
     faltan: [{ que: 'algo', donde: '/keys' }],
     rps: [{ id: 'rp', legalName: 'RP', problems: [], services: [{ id: 's', name: 'S', uses: [{ published: true }] }] }],
     svg: '<svg/>',

@@ -197,23 +197,8 @@ export async function resumen(store) {
   };
 
   const listas = ['av-lab', 'pid-lab', 'wallet-lab', 'wrpac-lab', 'wrprc-lab', 'pubeaa-lab'];
-  const estado = {
-    tlso: firmantes.length
-      ? { ok: true, detalle: `${firmantes.length} conforme(s)` }
-      : { ok: false, detalle: 'no hay ninguno' },
-    av: deLista('av-lab'),
-    pid: deLista('pid-lab'),
-    wallet: deLista('wallet-lab'),
-    wrpac: deLista('wrpac-lab'),
-    wrprc: deLista('wrprc-lab'),
-    pubeaa: deLista('pubeaa-lab'),
-  };
 
   const validas = rps.filter((r) => !r.problems.length).length;
-  estado.rps = rps.length
-    ? { ok: validas === rps.length, parcial: validas > 0, detalle: `${validas}/${rps.length} validas` }
-    : { ok: false, detalle: 'ninguna dada de alta' };
-
   let access = 0;
   let wrprcEmitidos = 0;
   for (const rp of rps) {
@@ -222,9 +207,50 @@ export async function resumen(store) {
       wrprcEmitidos += s.uses.filter((u) => u.published).length;
     }
   }
-  estado.certs = access + wrprcEmitidos
-    ? { ok: true, detalle: `${access} acceso · ${wrprcEmitidos} registro` }
-    : { ok: false, detalle: 'ninguno emitido' };
+
+  /**
+   * Como esta cada pieza del marco, en el orden en que se monta (§5 del MANUAL).
+   *
+   * Es la mitad en POSITIVO de `faltan`, que solo enumera lo que va mal: cuando
+   * no falta nada, `faltan` esta vacio y esta tabla es lo unico que dice cuantas
+   * entradas tiene cada lista, por que secuencia va y cuantos certificados se han
+   * emitido. Sale como array y no como objeto para que la vista no tenga que
+   * repetir la lista de piezas ni saber donde vive cada una: eso ya se decide
+   * aqui, igual que el `donde` de `faltan`.
+   */
+  const estado = [
+    {
+      pieza: 'Firmante de listas',
+      donde: '/keys',
+      ...(firmantes.length
+        ? { ok: true, detalle: `${firmantes.length} conforme(s)` }
+        : { ok: false, detalle: 'no hay ninguno' }),
+    },
+    // El id y no el `title`: el nombre de esquema publicado ("Trust Lab list of
+    // providers of wallet-relying party access certificates (TEST)") es correcto
+    // en el artefacto y aqui empuja la columna del detalle fuera de pantalla. El
+    // id es ademas el asa que el operador usa en el CLI, en las URLs y en el
+    // manual. `faltan` sigue usando el nombre largo porque ahi es una frase.
+    ...listas.map((id) => ({
+      pieza: id,
+      donde: `/lists/${id}`,
+      ...deLista(id),
+    })),
+    {
+      pieza: 'Relying parties',
+      donde: '/rps',
+      ...(rps.length
+        ? { ok: validas === rps.length, parcial: validas > 0, detalle: `${validas}/${rps.length} validas` }
+        : { ok: false, detalle: 'ninguna dada de alta' }),
+    },
+    {
+      pieza: 'Certificados emitidos',
+      donde: '/rps',
+      ...(access + wrprcEmitidos
+        ? { ok: true, detalle: `${access} acceso · ${wrprcEmitidos} registro` }
+        : { ok: false, detalle: 'ninguno emitido' }),
+    },
+  ];
 
   // Lo que falta, en el orden en que hay que resolverlo.
   const faltan = [];

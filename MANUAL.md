@@ -98,6 +98,12 @@ El almacén se elige por entorno, en este orden: `TRUST_LAB_PGLITE` (Postgres en
 WASM, sin servidor — es el que usan los tests) → `DATABASE_URL` → fichero
 (`state/`, `out/`).
 
+> ⚠ **`TRUST_LAB_PGLITE` es una RUTA**, no un interruptor: su valor va tal cual a
+> `PGlite.create()` y es el directorio de datos. Ponerle `1` no activa un modo en
+> memoria — crea un directorio `./1/` con la base entera donde estés. Usa una
+> ruta de verdad (`TRUST_LAB_PGLITE=/tmp/pgdata`), que es lo que hace
+> `test/harness.mjs`.
+
 ---
 
 ## 4. El marco completo, de un vistazo
@@ -1085,7 +1091,7 @@ Donde pide un estado o un registro acepta tanto `av-lab` como
 | `CONSOLE_SECRET` | consola | firma de la cookie; sin ella, sesiones efímeras |
 | `TRUST_LAB_KEY` | consola, CLI | cifra el material privado en reposo (AES-256-GCM) |
 | `DATABASE_URL` | todos | Postgres; obligatoria en Railway |
-| `TRUST_LAB_PGLITE` | tests, local | Postgres en WASM, sin servidor |
+| `TRUST_LAB_PGLITE` | tests, local | Postgres en WASM, sin servidor. **Es la ruta del directorio de datos**, no un `1`/`true` |
 | `PORT` | servicios | puerto de escucha |
 | `MAX_CACHE_SECONDS` | publisher | tope del `Cache-Control` derivado del `nextUpdate` |
 

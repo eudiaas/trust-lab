@@ -867,8 +867,8 @@ export async function reset(store, { scope = 'publicado', confirm, root } = {}) 
 
   let sembrados = [];
   if (root) {
-    const { seedIfEmpty } = await import('../../store/src/index.mjs');
-    sembrados = (await seedIfEmpty(store, root)).seeded;
+    const { seedMissing } = await import('../../store/src/index.mjs');
+    sembrados = (await seedMissing(store, root)).seeded;
   }
   return { scope, retirados, claves: previo.keys.length, documentos: previo.docs.length, sembrados };
 }

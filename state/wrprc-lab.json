@@ -2,7 +2,7 @@
   "id": "wrprc-lab",
   "kind": "lote-json",
   "loteType": "EUWRPRCProvidersList",
-  "url": "https://trust-lab.espuni.com/lists/wrprc-lab.json",
+  "url": "https://trust-lab.espuni.com/lote/wrprc-lab.jwt",
   "lang": "en",
   "schemeOperatorName": "espuni Trust Lab",
   "schemeName": "Trust Lab list of providers of wallet-relying party registration certificates (TEST)",

@@ -167,6 +167,18 @@ export function dashboard({ estado, faltan, rps, svg, flash }) {
         : ''
     }
 
+    <h2>Como esta</h2>
+    <table><tr><th>Pieza</th><th>Estado</th><th>Detalle</th></tr>
+    ${estado
+      .map(
+        (e) => `<tr><td><a href="${esc(e.donde)}">${esc(e.pieza)}</a></td>
+        <td><span class="pill ${e.ok ? 'ok' : e.parcial ? 'warn' : 'bad'}">${
+          e.ok ? 'listo' : e.parcial ? 'a medias' : 'pendiente'
+        }</span></td>
+        <td class="meta">${esc(e.detalle)}</td></tr>`,
+      )
+      .join('')}</table>
+
     <h2>Relying parties</h2>
     ${
       rps.length

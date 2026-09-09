@@ -2,7 +2,7 @@
   "id": "wallet-lab",
   "kind": "lote-json",
   "loteType": "EUWalletProvidersList",
-  "url": "https://trust-lab.espuni.com/lists/wallet-lab.json",
+  "url": "https://trust-lab.espuni.com/lote/wallet-lab.jwt",
   "lang": "en",
   "schemeOperatorName": "espuni Trust Lab",
   "schemeName": "Trust Lab list of wallet providers (TEST)",

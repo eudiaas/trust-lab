@@ -24,7 +24,7 @@ Y una lista LoTE (JSON en un JWS) — aquí, la de proveedores de certificados d
 acceso, que es la que ninguna herramienta existente sabía emitir:
 
 ```bash
-node apps/cli/index.mjs mint-ca     wrpac-ca-1 "C=ES, O=Lab Access CA, CN=Lab WRPAC Issuing CA"
+node apps/cli/index.mjs mint-ca     wrpac-ca-1 "C=ES, O=Lab Access Certificate Provider, CN=Lab WRPAC Issuing CA"
 node apps/cli/index.mjs add-entity  wrpac-lab wrpac-ca-1 "Lab Access Certificate Provider"
 node apps/cli/index.mjs build-lote  wrpac-lab tl-signer
 ```
@@ -65,7 +65,7 @@ camino ZK. Si pasa aquí, la aceptan los dos.
 | Trusted List XML ETSI TS 119 612 v2.3.1 + firma XAdES | ✅ `packages/tl-xml` — Annex B + verificada con `@owf/eudi-tl` |
 | Certificado del TLSO conforme a la cláusula 5.7.1 | ✅ `mintTlSigner` + `assertTlsoProfile` |
 | Perfil **AV Trusted List** de la Comisión (tablas I.1–I.3) | ✅ `packages/tl-xml/src/av-profile.mjs` |
-| Listas LoTE: PID · Wallet · **WRPAC (Access CAs)** · **WRPRC** · PubEAA | ✅ `packages/lote` — TS 119 602 v1.1.1 |
+| Listas LoTE: PID · Wallet · **WRPAC (Access CAs)** · **WRPRC** · **PubEAA** | ✅ `packages/lote` — TS 119 602 v1.1.1, las cinco con su documento de estado |
 | **Access certificates de RP (WRPAC)** | ✅ `packages/ca/src/wrpac.mjs` — TS 119 411-8 v1.1.1 |
 | **Registration certificates (WRPRC)** | ✅ `packages/wrprc` — TS 119 475 v1.2.1, con detector de edición |
 | Status lists (revocación) | ⬜ sobre `@owf/token-status-list` |
@@ -111,6 +111,12 @@ Dos comprobaciones corren en cada `build-list` y **abortan la emisión** si fall
   qualifier `cpsURI` y contacto del RP en el SAN. Los tres requisitos
   obligatorios se comprueban además **antes** de emitir, así que un spec
   incompleto no llega a producir certificado.
+- `assertIdentityNaming(state)` — cláusula 6.6.3: el `organizationName` del
+  certificado publicado tiene que coincidir con el nombre de la entidad. Sale
+  como **aviso** en los anexos D–G, donde la norma dice *should*, y como
+  **error que aborta la emisión** en el anexo H (`pubeaa-lab`), donde lo repite
+  como *shall*. Esa segunda rama no se podía ejercitar hasta que la lista de
+  PubEAA existió.
 - `assertLote(lote, state)` — validez estructural según `@owf/eudi-lote`, más
   la coherencia entre el tipo de lista y los tipos de servicio de sus entidades.
   Y cada `build-lote` **se verifica a sí mismo**: comprueba la firma del JWS

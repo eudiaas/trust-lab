@@ -12,10 +12,12 @@ Queremos poder **revocar**, y que revocar signifique algo comprobable desde
 fuera: que un verificador o una wallet cambie su veredicto. La pregunta que lo
 abre todo es si eso es "montar CRLs".
 
-La respuesta es que **no hay un mecanismo, hay tres**, y la norma elige uno por
-tipo de artefacto: la status list para los WRPRC, la propia lista de confianza
-para las anclas, y la CRL para los certificados X.509. Dos de los tres ya
-existen en este laboratorio. Lo que falta es el tercero, y falta entero.
+La respuesta es que **no es una pregunta, son tres** —si una entidad sigue
+acreditada, si su certificado sigue siendo válido, y si lo que emitió sigue
+valiendo— y que cada una tiene su mecanismo y su reloj (§1). Confundirlas es el
+error más caro de este terreno, así que la nota empieza por separarlas. De las
+tres, la que **falta entera** es la validez técnica de los certificados: la
+CRL.
 
 La regla que se propone adoptar:
 
@@ -40,24 +42,65 @@ La regla no sale gratis: obliga a que toda emisión lleve `CDP`, deja fuera los
 certificados autofirmados —que no tienen CA que los revoque— y exige reemitir lo
 ya emitido. Las consecuencias, una a una, en la §3.
 
-## 1. Tres mecanismos, uno por artefacto
+## 1. Tres preguntas distintas, que se confunden con facilidad
 
-| Artefacto | Mecanismo que fija la norma | Hoy |
+Antes de la tabla, la distinción que ordena todo lo demás y que es la que más
+fácil se colapsa:
+
+> **El estado de acreditación de una entidad en una lista y el estado técnico
+> de validez del certificado que la identifica son EJES INDEPENDIENTES.**
+
+Una entidad puede pasar a `withdrawn` porque deja de cumplir los requisitos del
+esquema —una auditoría que no supera, un mandato que expira, una retirada
+voluntaria— y **su certificado seguir siendo perfectamente válido y no
+revocado**: la clave no se ha comprometido, nadie tiene por qué anularla, y
+cualquier firma que hiciera antes sigue verificando. Y al revés: una clave
+comprometida se revoca por CRL mientras la entidad **sigue acreditada**, porque
+lo único que tiene que hacer es rotar a un certificado nuevo y que la lista lo
+publique.
+
+Confundirlos lleva a dos errores prácticos, los dos caros:
+
+1. **Creer que sacar algo de la lista lo invalida.** No lo invalida: deja de
+   acreditarlo. Quien tenga ese certificado **pineado** —el caso del TLSO, por
+   definición— o una copia rancia de la lista lo sigue aceptando, y no hay nada
+   en el certificado que le diga lo contrario. Por eso una hoja autofirmada sin
+   CA que la revoque (§3.3) es un agujero real y no una etiqueta cosmética.
+2. **Creer que un certificado válido implica una entidad acreditada.** Un
+   verificador que sólo compruebe la cadena y el `CDP` aceptará a una entidad
+   que el esquema ya retiró; uno que sólo mire la pertenencia a la lista
+   aceptará una clave comprometida mientras la lista no se reemita.
+
+De ahí que las preguntas sean **tres**, cada una con su mecanismo y su reloj:
+
+| La pregunta | Quién la contesta | Con qué reloj |
 |---|---|---|
-| **WRPRC** (JWT de TS 119 475) | **Token Status List.** §6.2.3.10, NOTE 1: *«WRPRC providers do not provide OCSP or CRL service»*. El §6.2.6.2 fija además el detalle: array de bits, referencia `{uri, idx}` dentro del propio certificado, semántica `valid`/`revoked`, lista firmada | ✅ implementado |
-| **Anclas de una lista LoTE** (PID, Wallet, WRPAC, WRPRC providers) | **Quitar la entidad y reemitir la lista.** TS 119 602, anexos D/E/F/G: *«The ServiceStatus component shall not be used»*, y *«When a listed WRPAC provider does not have that mandate anymore, it shall be removed from the list»*. No hay estado intermedio: se está o no se está | ✅ existe (`remove-provider` + reemitir); falta **llamarlo** revocación |
-| **Ancla de la AV Trusted List** (XML) | **Estado `deprecated`** + `StatusStartingTime`. Perfil de la Comisión, tabla I.3: `recognized` o `deprecated`, *«to the exclusion of any other»* | ⚠️ el constructor ya emite ambos campos; no hay operación que los ponga, y `setProviders` los pisa |
-| **Anclas de la lista PubEAA** (`pubeaa-lab`) | Estado **`withdrawn`**. Es la única lista LoTE cuyo `ServiceStatus` *shall be present*, y el anexo H manda ponerlo en **todos** los servicios de la entidad cuando deja de estar notificada | ❌ no hay operación que lo ponga; hoy toda entrada se emite `notified` |
-| **Certificados X.509**: access certificates (WRPAC), Document Signers, firmantes de listas y de credenciales, sub-CAs | **CRL** (o OCSP). TS 119 411-8 §6.6.2 y §6.6.3 heredan de EN 319 411-1 los perfiles de CRL y de OCSP; REV-6.3.9-04: *«shall revoke any wallet-relying party access certificate when the registration of the wallet-relying party is suspended or cancelled»* | ❌ **no existe** |
+| **A. ¿Está acreditada esta entidad / este servicio?** | La lista: presencia de la entrada, y donde hay estados, `recognized`/`deprecated` (AV TL) o `notified`/`withdrawn` (PubEAA) | `StatusStartingTime` e historial de servicio: desde cuándo rige ese estado |
+| **B. ¿Es válido el certificado que la identifica?** | La CRL de la CA que lo emitió — y **nadie**, si es autofirmado | `thisUpdate`/`nextUpdate` de la CRL; `revocationDate` de la entrada |
+| **C. ¿Es válido lo que esa entidad ha emitido?** | Según el formato de lo emitido: status list (WRPRC), CRL (access certificates), nada (la atestación de edad no lleva estado) | el del mecanismo que corresponda |
 
-Dos lecturas que conviene no perder:
+Y así queda el mapa, sin mezclar ejes:
 
+| Eje | Artefacto | Mecanismo que fija la norma | Hoy |
+|---|---|---|---|
+| **C** | **WRPRC** (JWT de TS 119 475) | **Token Status List.** §6.2.3.10, NOTE 1: *«WRPRC providers do not provide OCSP or CRL service»*. El §6.2.6.2 fija el detalle: array de bits, referencia `{uri, idx}` dentro del propio certificado, semántica `valid`/`revoked`, lista firmada | ✅ implementado |
+| **C** | **Access certificates (WRPAC)** | **CRL** de la CA emisora. TS 119 411-8 §6.6.2 y §6.6.3 heredan de EN 319 411-1 los perfiles de CRL y de OCSP; REV-6.3.9-04: *«shall revoke any wallet-relying party access certificate when the registration of the wallet-relying party is suspended or cancelled»* | ❌ **no existe** |
+| **C** | Atestación de edad (PAA) | **ninguno**: en AV la credencial no lleva status list. Su única defensa es la caducidad, y el eje B del DS que la firmó | — |
+| **B** | Cualquier X.509 del marco: Document Signers, firmantes, access certificates, sub-CAs | **CRL** de su CA emisora | ❌ **no existe** |
+| **A** | Entidades de una lista LoTE (PID, Wallet, WRPAC, WRPRC providers) | **Quitar la entrada y reemitir.** Anexos D/E/F/G: *«The ServiceStatus component shall not be used»*, y *«When a listed WRPAC provider does not have that mandate anymore, it shall be removed from the list»*. Ahí no hay estado intermedio: se está o no se está | ✅ existe (`remove-provider` + reemitir) |
+| **A** | Entidades de la lista PubEAA (`pubeaa-lab`) | Estado **`withdrawn`**. Única lista LoTE cuyo `ServiceStatus` *shall be present*; el anexo H manda ponerlo en **todos** los servicios de la entidad | ❌ no hay operación que lo ponga; toda entrada se emite `notified` |
+| **A** | Entidades de la AV Trusted List (XML) | Estado **`deprecated`** + `StatusStartingTime`. Tabla I.3: `recognized` o `deprecated`, *«to the exclusion of any other»* | ⚠️ el constructor ya emite ambos campos; no hay operación que los ponga, y `setProviders` los pisa |
+
+Tres lecturas que conviene no perder:
+
+- **Esta nota va del eje B, y de la parte del C que son certificados X.509.** El
+  eje A ya funciona; lo que le falta son las dos operaciones de estado (§9, F3).
 - **Para los WRPRC la CRL está explícitamente descartada por la norma.** No es
   que no hayamos llegado: es que ahí no va.
-- **Para las anclas, la lista de confianza *es* el mecanismo de revocación.** Un
-  ancla fuera de la lista no la valida nadie, sin necesidad de CRL. Por eso la
-  CRL de una hoja publicada como ancla es, para el veredicto, un cinturón
-  encima de los tirantes — lo cual no la hace inútil (§7), pero sí secundaria.
+- **Un ancla publicada como hoja no tiene eje B si es autofirmada.** No hay
+  nadie que pueda decir "esta clave ya no vale": lo único disponible es el eje
+  A, que es más lento —hay que reemitir la lista— y no alcanza a quien la tenga
+  pineada.
 
 ## 2. Inventario
 
@@ -158,9 +201,12 @@ se revocara a sí mismo, no funcionaría, por dos razones independientes:
 La regla de las tres opciones del `MANUAL.md` (autofirmar es legítimo cuando la
 lista publica el certificado firmante) sigue siendo cierta **para el anclaje**,
 pero ahora tiene un contrapeso que la interfaz tiene que decir: *autofirmado =
-sin servicio de revocación*. Ahí la única retirada posible es reemitir la lista
-sin él, que es más lenta y más ruidosa — y en la AV TL, con `NextUpdate` de por
-medio, puede tardar días en llegar a un consumidor que cachea.
+sin eje B*. Lo único que queda entonces es el eje A —reemitir la lista sin él—,
+que **no es lo mismo ni sirve para lo mismo**: dice "esta entidad ya no está
+acreditada", no "esta clave ya no vale". Es más lento (hay que reemitir), más
+ruidoso (cambia el documento entero) y, con el `NextUpdate` de la AV TL de por
+medio, puede tardar días en llegar a un consumidor que cachea. Y a quien tenga
+el certificado pineado no le llega nunca.
 
 No se propone prohibirlo: se propone **etiquetarlo** en la consola y en el
 grafo (una hoja sin arista a ninguna CRL), y ofrecer *"reemitir bajo una CA"* a
@@ -207,10 +253,11 @@ constraint exceeded`. Una raíz destinada a emitir sub-CAs tiene que salir con
 `pathLen: 1`, y eso **se decide al crearla**: cambiarlo después es reemitir el
 ancla, o sea invalidar todo lo que cuelga de ella.
 
-Para una raíz autofirmada no hay nada que hacer: su retirada es la de la §1,
-desaparecer de la lista (LoTE) o pasar a `deprecated` (AV TL). Por eso esto
-queda como opción —útil para montar el caso "la wallet acepta una cadena cuya
-intermedia está revocada"— y no como parte de la regla.
+Para una raíz autofirmada no hay nada que hacer en el eje B: lo único
+disponible es el A —desaparecer de la lista, o `withdrawn`/`deprecated`—, con
+la limitación de siempre: retira la acreditación, no anula la clave. Por eso
+esto queda como opción —útil para montar el caso "la wallet acepta una cadena
+cuya intermedia está revocada"— y no como parte de la regla.
 
 ### 3.7 Lo ya emitido no lleva `CDP`: hay que reemitirlo
 
@@ -397,10 +444,16 @@ CA o publiquen hoja.
 
 **Corolario, y es el que contesta la pregunta de fondo:** el estado del
 *propio* certificado que está en la lista **nunca** se expresa con un servicio
-`…/Revocation`, sea CA o sea hoja. Ese estado lo dice la lista misma — quitando
-la entrada (anexos D–G), con `withdrawn` (anexo H) o con `deprecated` (AV TL).
-Un `…/Revocation` que apuntara a "la CRL donde se revoca esta ancla" estaría
-usando el campo para otra cosa que la que la norma le da.
+`…/Revocation`, sea CA o sea hoja. Ese campo es del eje C.
+
+Y cuidado con la respuesta fácil de "eso ya lo dice la lista": la lista dice el
+eje **A** —si la entidad sigue acreditada—, que **no** es el estado técnico del
+certificado. Una entidad puede quedar `withdrawn` con su certificado
+perfectamente válido, y un certificado puede estar revocado con su entidad
+acreditada, rotando a otro. El eje B de ese certificado lo publica **la CRL de
+su CA emisora**, si la tiene, y **nadie** si es autofirmado (§3.3). Un
+`…/Revocation` que apuntara a "la CRL donde se revocaría esta ancla" estaría
+usando el campo para otra cosa distinta de la que la norma le da.
 
 **Y aun así, declararlo no aporta.** Los anexos dicen *may be used*, y en los
 dos casos que nos tocan el estado ya es descubrible desde el propio artefacto,
@@ -455,6 +508,25 @@ disponibles, en la línea de los cuatro del laboratorio ZK:
 Los casos 2 a 6 son los que separan "implementa CRL" de "comprueba
 revocación". Ninguno se puede montar sin ser el emisor.
 
+Y los dos que salen de cruzar los ejes de la §1, que son los que de verdad no
+se pueden ensayar en ningún otro sitio, porque exigen ser a la vez el operador
+de la lista y el emisor de los certificados:
+
+7. **Entidad retirada, certificado impecable.** La entidad pasa a `withdrawn`
+   (o desaparece de la lista) y su certificado sigue vigente y sin revocar →
+   ¿el consumidor lee el **estado** del servicio, o le basta con que el
+   certificado esté —o estuviera— en la lista? Un verificador que sólo
+   compruebe pertenencia acepta a quien el esquema ya retiró; y si además
+   cachea la lista hasta el `NextUpdate`, la acepta durante días.
+8. **Certificado revocado, entidad acreditada.** La entidad sigue en la lista y
+   su clave está revocada por la CRL de su CA, porque está rotando a otra → ¿lo
+   rechaza, o le basta la pertenencia a la lista? Es el escenario de clave
+   comprometida, y el único que distingue mirar el eje B de suponerlo.
+
+Los dos son consecuencia directa de que los ejes sean independientes: ninguna
+de las dos situaciones es una anomalía, las dos ocurren en operación normal, y
+un consumidor puede pasar una y fallar la otra.
+
 ## 8. Lo que ya encontramos en el consumidor
 
 EUDIPLO tiene el lado consumidor escrito (`CrlValidationService`): lee el CDP,
@@ -498,7 +570,7 @@ revocación.
 |---|---|---|---|
 | **F1** | La maquinaria por CA: documento `x509-crl` creado por `mintKey`, `revokeCert` / `buildCrl` / `checkRevoked`, `CDP` impuesto por la CA en `mintLeaf` / `mintRoleSigner` / `mintWrpac`, ruta en el publisher, comandos de CLI y sección en la consola. Tests unitarios, e2e y contraste con OpenSSL | Es la regla de la §0, entera. Vale igual para la Access CA, para las tres IACA y para cualquier CA que se cree mañana, porque nada de esto es específico de un rol | ~1 jornada |
 | **F2** | Reemitir el material vivo para que salga con `CDP`, y la pregunta *"¿qué hay fuera de cobertura?"* en la pantalla de estado | Sin esto, F1 cubre lo que se emita a partir de ahora y deja el pasado invisible (§3.7) | ~2 h |
-| **F3** | Estados de servicio: `deprecated` en la AV TL y `withdrawn` en `pubeaa-lab`, preservando `status` en `setProviders` (+ `ServiceHistory` en el XML) | Cierra la revocación de anclas en las dos listas que la expresan con un estado en vez de con una baja | ~2 h |
+| **F3** | Estados de servicio: `deprecated` en la AV TL y `withdrawn` en `pubeaa-lab`, preservando `status` en `setProviders` (+ `ServiceHistory` en el XML) | Cierra el **eje A** en las dos listas que lo expresan con un estado en vez de con una baja — retirar la acreditación, que no es revocar el certificado | ~2 h |
 | **F4** | Los casos torcidos de la §7 como material de laboratorio | Es donde está el valor de medida: distinguir "implementa CRL" de "comprueba revocación" | ~½ jornada |
 | **F5** (opcional) | Sub-CAs: `mint-ca --issuer` y `--path-len`, para poder revocar una CA entera (§3.6) | Sólo hace falta para el escenario "la wallet acepta una cadena con la intermedia revocada". No es parte de la regla | ~3 h |
 

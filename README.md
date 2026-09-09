@@ -288,11 +288,14 @@ node apps/cli/index.mjs status-check status-wrprc 7 tl-signer   # → invalid
 La lista se reserva entera de golpe (1024 posiciones) en vez de crecer con cada
 revocación: una lista que crece filtra cuántos certificados hay vivos.
 
-Eso cubre **una** de las tres formas de revocar que hay en juego. Las anclas de
-una lista se revocan quitándolas de ella (o marcándolas `deprecated`, en la AV
-TL), y los certificados X.509 —access certificates, Document Signers,
-firmantes— por **CRL**, que todavía no existe: hoy ninguna CA del laboratorio
-ofrece servicio de revocación de lo que emite.
+Eso cubre **una** de las tres preguntas que hay en juego, y que se confunden con
+facilidad porque suenan igual: si una entidad sigue **acreditada** (lo dice la
+lista: presencia de la entrada, `deprecated`, `withdrawn`), si el **certificado**
+que la identifica sigue siendo válido (lo diría la CRL de su CA — hoy ninguna la
+publica) y si lo que esa entidad **emitió** sigue valiendo (status list para los
+WRPRC, CRL para los access certificates). Las dos primeras son ejes
+independientes: una entidad puede quedar retirada con su certificado impecable,
+y un certificado puede estar revocado con su entidad todavía acreditada.
 
 [`REVOCACION.md`](REVOCACION.md) es la nota de diseño que lo cierra: qué dice
 cada norma, el inventario CA por CA, y la regla que se propone — **toda CA del

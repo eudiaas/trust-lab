@@ -102,16 +102,17 @@ WASM, sin servidor — es el que usan los tests) → `DATABASE_URL` → fichero
 
 ## 4. El marco completo, de un vistazo
 
-Un marco de confianza son **cinco listas y tres jerarquías de certificados**, y
+Un marco de confianza son **seis listas y tres jerarquías de certificados**, y
 todo encaja por el mismo mecanismo: *un artefacto vale si su cadena termina en
 un ancla que publica la lista que le corresponde*. Nada más. No hay OID mágico
 ni perfil que sustituya a eso.
 
 | Quién firma qué | Certificado | Cuelga de | Su ancla se publica en |
 |---|---|---|---|
-| las cinco listas | firmante de listas (TLSO) | nadie (autofirmado) | se **pinea** en el consumidor |
+| las seis listas | firmante de listas (TLSO) | nadie (autofirmado) | se **pinea** en el consumidor |
 | las atestaciones de edad | Document Signer de AV | **IACA de AV** (obligatoria) | `av-lab` (AV Trusted List) |
 | el PID | Document Signer del PID | **CA del PID provider** (obligatoria) | `pid-lab` |
+| las atestaciones de organismo público | Document Signer de PuB-EAA | **CA del organismo** (obligatoria) | `pubeaa-lab` |
 | la Wallet Instance Attestation | firmante de WIA | CA del wallet provider, *o autofirmado* | `wallet-lab` |
 | las Key Attestation | firmante de KA | CA del wallet provider, *o autofirmado* | `wallet-lab` |
 | — (los emite) | access certificate de la RP | **CA de acceso** (obligatoria) | `wrpac-lab` |
@@ -121,9 +122,9 @@ ni perfil que sustituya a eso.
 Dónde hace falta CA y dónde basta un autofirmado sale de dos reglas
 independientes (§5.2): hace falta cuando algo tiene que **firmar un X.509**
 (`wrpac-lab`) o cuando el **formato de la credencial exige jerarquía** (mdoc:
-`av-lab`, `pid-lab`).
+`av-lab`, `pid-lab`, `pubeaa-lab`).
 
-**Las status lists no son listas de confianza.** Las cinco dicen *en quién se
+**Las status lists no son listas de confianza.** Las seis dicen *en quién se
 confía*; una status list dice de qué se ha **dejado** de confiar. Existen porque
 cada registration certificate lleva dentro una posición
 (`status.status_list = { idx, uri }`, TS 119 475), así que sin ellas
@@ -143,9 +144,10 @@ que hay que instalar a mano en la wallet.
 El orden se deduce de la tabla y no es reordenable:
 
 ```
-firmante de listas (TLSO)  ──────── firma las cinco listas
+firmante de listas (TLSO)  ──────── firma las seis listas
 IACA de AV ──→ DS de AV ───────────→ av-lab
 CA del PID ──→ DS del PID ─────────→ pid-lab
+CA del organismo ──→ DS de PuB-EAA ─→ pubeaa-lab
 CA del wallet ──→ WIA · KA ────────→ wallet-lab
 CA de acceso ──────────────────────→ wrpac-lab
    └── access certificate (uno por servicio de la RP)
@@ -162,7 +164,7 @@ El **dashboard** de la consola (`/`) es ese grafo calculado sobre el almacén:
 cada tarjeta dice si algo se puede emitir ya o qué falta. Si no sabes cuál es el
 siguiente paso, la respuesta está ahí.
 
-> **Las cinco listas se siembran vacías.** Un ancla de ejemplo sería un
+> **Las seis listas se siembran vacías.** Un ancla de ejemplo sería un
 > certificado cuya clave privada no existe en ningún sitio: la lista diría
 > «confía en esto» y nadie podría emitir con ello. Un despliegue nuevo empieza
 > sin nada publicable y el dashboard dice qué falta.
@@ -176,7 +178,7 @@ siguiente paso, la respuesta está ahí.
 ## 5. Desplegar el marco completo
 
 Esto es el guion entero. Ejecutado tal cual, deja un marco de confianza
-funcionando: cinco listas firmadas y publicadas, y una relying party con sus dos
+funcionando: seis listas firmadas y publicadas, y una relying party con sus dos
 certificados.
 
 Los ejemplos van con el CLI porque se leen mejor en orden; **todo tiene su
@@ -211,7 +213,7 @@ node apps/cli/index.mjs mint-tl-signer tl-signer av-lab
 
 > Consola: **Claves → Firmante de listas (TLSO)**.
 
-Las cinco listas del laboratorio declaran el mismo *scheme operator*
+Las seis listas del laboratorio declaran el mismo *scheme operator*
 (`espuni Trust Lab`, territorio `EU`), así que **uno sirve para todas**. Si el
 `C` no coincide con el territorio es un **aviso**, no un error: la AV TL de
 producción hace exactamente eso (`C=LU` con territorio `EU`).
@@ -232,6 +234,11 @@ $T mint-signer av-iaca av-ds mdoc-ds "C=ES, O=Lab AV Attestation Provider, CN=La
 $T mint-ca     pid-ca "C=ES, O=Lab PID Provider, CN=Lab PID Issuing CA"
 $T mint-signer pid-ca pid-ds pid-ds "C=ES, O=Lab PID Provider, CN=Lab PID DS 01"
 
+# PuB-EAA — atestaciones de organismo publico. OJO con el O del DN: el anexo H
+# exige que coincida EXACTAMENTE con el nombre de la entidad en la lista
+$T mint-ca     pubeaa-ca "C=ES, O=Lab Public Body, CN=Lab PubEAA Issuing CA"
+$T mint-signer pubeaa-ca pubeaa-ds pubeaa-ds "C=ES, O=Lab Public Body, CN=Lab PubEAA DS 01"
+
 # Wallet provider — WIA y Key Attestation (aquí la CA es opcional: ver abajo)
 $T mint-ca     wallet-ca "C=ES, O=Lab Wallet Provider, CN=Lab Wallet Provider CA"
 $T mint-signer wallet-ca wia-signer wia "C=ES, O=Lab Wallet Provider, CN=Lab WIA Signer 01"
@@ -246,9 +253,9 @@ $T mint-signer wrprc-ca wrprc-signer wrprc "C=ES, O=Lab RC Provider, CN=Lab WRPR
 ```
 
 > Consola: **Claves → CA / hoja** para las CAs, **Claves → Firmante de
-> credenciales o atestaciones** para los cinco firmantes.
+> credenciales o atestaciones** para los seis firmantes.
 
-Cinco roles y **dos perfiles**. Los papeles que nombra un operador son más que
+Seis roles y **dos perfiles**. Los papeles que nombra un operador son más que
 los certificados que existen de verdad, y decirlo evita buscar diferencias donde
 no las hay:
 
@@ -256,6 +263,7 @@ no las hay:
 |---|---|---|---|
 | `mdoc-ds` | atestaciones de edad (MSO) | **mdoc**: hoja + EKU `1.0.18013.5.1.2` | **obligatoria** |
 | `pid-ds` | el PID en `mso_mdoc` | **mdoc** | **obligatoria** |
+| `pubeaa-ds` | una PuB-EAA en `mso_mdoc` | **mdoc** | **obligatoria** |
 | `wrprc` | registration certificates | **jws**: hoja, sin EKU | opcional |
 | `wia` | Wallet Instance Attestation | **jws** | opcional |
 | `key-attestation` | Key Attestation | **jws** | opcional |
@@ -263,7 +271,7 @@ no las hay:
 Los tres del perfil `jws` son **el mismo certificado**: lo que firman —un JWS
 con su cadena en el `x5c`— no necesita nada especial en el certificado, así que
 no hay nada que los distinga salvo de quién cuelgan y en qué lista se publican.
-La consola los agrupa por perfil en el desplegable, para que no parezcan cinco
+La consola los agrupa por perfil en el desplegable, para que no parezcan seis
 opciones distintas.
 
 **`pid-ds` es `mdoc-ds`**: un PID en `mso_mdoc` es un mdoc, así que su Document
@@ -354,12 +362,15 @@ que viene sembrado, porque su clave privada no existe:
 for L in av-lab pid-lab wallet-lab wrpac-lab wrprc-lab; do
   $T remove-provider $L 0
 done
+# pubeaa-lab nace vacia: no tiene proveedor sembrado que quitar
 
 $T add-provider av-lab     av-ds         "Lab AV Attestation Provider" ES
 $T add-entity   pid-lab    pid-ds        "Lab PID Provider"
 $T add-entity   wallet-lab wia-signer    "Lab Wallet Provider"
 $T add-entity   wrpac-lab  wrpac-ca      "Lab Access Certificate Provider"
 $T add-entity   wrprc-lab  wrprc-signer  "Lab Registration Certificate Provider"
+# el nombre TIENE que ser el organizationName del certificado (anexo H)
+$T add-entity   pubeaa-lab pubeaa-ds     "Lab Public Body"
 ```
 
 > El JSON crudo sigue disponible en **Listas → JSON**, para lo que la página de
@@ -412,7 +423,7 @@ parte.
 
 TS 119 602 **no habla de anclas, ni de cadenas, ni de CA frente a hoja**: esas
 palabras no aparecen en la norma. Define la identidad digital del servicio
-(cláusula 6.6.3 y anexos D–G) por **función**:
+(cláusula 6.6.3 y anexos D–H) por **función**:
 
 > *"one or more X.509 certificates that can be used to verify the signature or
 > seal created by the provider … on the [access certificate / registration
@@ -424,13 +435,14 @@ Aplicado a cada anexo, eso da dos respuestas, y solo dos:
 |---|---|---|
 | `av-lab` (AV TL) | la atestación de edad | el **Document Signer** |
 | `pid-lab` (anexo D) | el PID | el **certificado firmante** |
+| `pubeaa-lab` (anexo H) | la atestación del organismo público | el **certificado firmante** |
 | `wallet-lab` (anexo E) | los componentes del wallet unit | el **certificado firmante** |
 | `wrprc-lab` (anexo G) | el registration certificate (un JWS) | el **certificado firmante** |
 | `wrpac-lab` (anexo F) | el access certificate (un **X.509**) | la **CA emisora** |
 
 El anexo F es el único distinto, y por una razón concreta: lo que firma un
 certificado X.509 es su CA, así que el certificado que verifica esa firma es el
-de la CA. En los otros tres lo que firma es la hoja.
+de la CA. En los otros cuatro lo que firma es la hoja.
 
 La herramienta aplica esa regla sola —`identityRef` en cada perfil de
 `packages/lote`— así que puedes nombrar la clave que quieras y guarda la que
@@ -447,7 +459,7 @@ anexo H, que lo repite como *shall*.
 
 ```bash
 $T build-list av-lab tl-signer                      # XML + XAdES
-for L in pid-lab wallet-lab wrpac-lab wrprc-lab; do
+for L in pid-lab wallet-lab wrpac-lab wrprc-lab pubeaa-lab; do
   $T build-lote $L tl-signer                        # JSON en JWS
 done
 $T status-build status-wrprc tl-signer              # lista de revocación
@@ -823,24 +835,65 @@ línea en el log del servicio.
 
 ## 8. Apuntar una wallet al laboratorio
 
-Es para lo que existe todo lo anterior. Para que una wallet valide contra este
-marco necesita, según lo que esté comprobando:
+Es para lo que existe todo lo anterior. **La wallet de referencia con la que se
+trabaja es la EUDI** (`eu-digital-identity-wallet/eudi-app-android-wallet-ui`),
+no la app de verificación de edad: la AV no consume ninguna lista de confianza
+—ancla contra un PEM empaquetado y trae la autenticación del lector
+desactivada—, así que apuntarla aquí no significa nada.
 
-1. **La AV Trusted List** — URL de `av-lab` y el **certificado del firmante**
-   pineado. Se saca con `export-key <firmante> chain`.
-2. **La LoTE de wallet o PID providers** — igual, con su firmante.
-3. **La LoTE de WRPAC providers** — para que acepte tu CA de acceso.
-4. **El access certificate del RP** — instalado en el verificador que hace la
-   petición.
-5. **El registration certificate** — el JWS que el verificador presenta en la
-   petición OID4VP.
+### Las cuatro listas que la wallet EUDI pide, y de dónde salen
 
-Cada lista se pinea por su **firmante**, no por su URL: es lo que la convierte
-en evidencia. Cambiar de firmante obliga a re-pinear en el otro extremo.
+Su configuración (`core-logic/src/<flavor>/…/WalletCoreConfigImpl.kt`) declara
+exactamente cuatro URLs, y el laboratorio emite las cuatro:
 
-Como las cinco listas del laboratorio las firma el mismo TLSO, en la práctica
-**solo hay un ancla que instalar a mano** en la wallet; todo lo demás lo
-descubre siguiendo las listas.
+| Slot de `SupportedLists` | Lista del laboratorio | Qué le deja validar |
+|---|---|---|
+| `pidProviders` | `pid-lab` | el emisor del PID que recibe |
+| `wrpacProviders` | `wrpac-lab` | el access certificate del verificador |
+| `wrprcProviders` | `wrprc-lab` | el registration certificate de la petición |
+| `pubEaaProviders` | `pubeaa-lab` | el emisor de una atestación de organismo público |
+
+**`wallet-lab` no está en esa lista, y no es un olvido**: una wallet no valida a
+su propio proveedor. La lista de wallet providers la consume el **emisor** —en
+nuestro caso EUDIPLO, por el campo `walletProviderTrustLists` de su configuración
+de emisión— para comprobar la Wallet Instance Attestation que la wallet presenta
+al pedir una credencial. Es el único de los seis anclajes que mira hacia el otro
+lado.
+
+### Lo que hay que hacer, y lo que no
+
+Las URLs viven **en el código de la app, por flavor**: apuntarla al laboratorio
+es cambiar esas cuatro líneas y compilar una variante propia. No hay pantalla de
+ajustes, así que lo que se demuestra es *«la wallet de referencia construida con
+esta configuración»*, no la que se instala de la tienda.
+
+Y **no hace falta instalar ningún ancla a mano**, al contrario de lo que decía
+este manual antes: el verificador de listas por defecto de `wallet-core`
+(`LoteJwtVerifier`) comprueba la firma del JWS **contra el certificado que la
+propia lista transporta en su `x5c`**, sin cadena, sin revocación y sin pin —
+está dicho en su propia documentación, que añade que esos controles llegarán más
+adelante. Así que el TLSO autofirmado del laboratorio pasa tal cual.
+
+> Eso es cómodo aquí y es **un modo de fallo, no una virtud**. Cuando la
+> librería lo cierre, habrá que aportar el firmante por su
+> `jwtSignatureVerifier()`, que la API ya expone. Y no sirve de precedente para
+> el otro lado: un verificador que no pinea a quién firmó la lista no está
+> comprobando nada que valga como evidencia.
+
+Lo que la wallet **sí** valida con lo que las listas publican: la cadena PKIX de
+la credencial contra las anclas que saca de ellas, con revocación activada salvo
+que el flavor la relaje (`relaxPkixRevocation()`), y los perfiles de certificado
+de entidad final salvo `relaxCertificateProfiles()`. El material del laboratorio
+tiene que aguantar eso, que es justo lo que comprueban los perfiles de §5.2.
+
+### Los dos certificados que no viajan por lista
+
+6. **El access certificate del RP** — se instala en el verificador que hace la
+   petición, no en la wallet.
+7. **El registration certificate** — es el JWS que el verificador presenta
+   dentro de la petición OID4VP.
+
+Los dos se sacan con `export-key` / `export` (§7) y se cargan en EUDIPLO.
 
 ---
 
@@ -868,7 +921,7 @@ mint-ca <nombre> "<DN>"                             CA raíz autofirmada
 mint-leaf <ca> <nombre> "<DN>"                      hoja genérica
 mint-tl-signer <nombre> <esquema>                   firmante de listas (5.7.1)
 mint-signer <ca|-> <nombre> <rol> "<DN>"            firmante ("-" = autofirmado)
-      roles: mdoc-ds | pid-ds | wrprc | wia | key-attestation
+      roles: mdoc-ds | pid-ds | pubeaa-ds | wrprc | wia | key-attestation
 mint-wrpac <ca> <registro> <servicio> [nombre]      access certificate
 
 new-rp <id> "<razón social>" <valor-id> [país] [lista-revocación] [tipo-id]
@@ -944,7 +997,7 @@ el `KeyUsage` rechaza la firma. Para un firmante autofirmado, `mint-signer` con
 firmante de listas, access certificate, hoja— sale de las extensiones del
 certificado, y es lo que muestra la columna «Qué es» de `/keys`.
 
-**Una lista solo vale por lo que contiene.** Las cinco se siembran vacías desde
+**Una lista solo vale por lo que contiene.** Las seis se siembran vacías desde
 el 2026-09-07 justamente para no arrastrar anclas que nadie puede usar; los
 almacenes creados antes sí las tienen. Un ancla publicada cuya clave privada no
 está en el almacén hace que la lista declare confianza en material que no puedes

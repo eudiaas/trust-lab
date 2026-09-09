@@ -276,6 +276,19 @@ export const SIGNER_ROLES = {
       'cambia de quien cuelga y en que lista se publica, no el certificado. ' +
       'Un PID en dc+sd-jwt no lleva este EKU y seria otro perfil (no implementado).',
   },
+  'pubeaa-ds': {
+    profile: 'mdoc-ds',
+    label: 'Document Signer de atestaciones de organismo publico (PuB-EAA)',
+    lista: 'EUPubEAAProvidersList (pubeaa-lab)',
+    nota:
+      'Mismo perfil que pid-ds por la misma razon: una PuB-EAA en mso_mdoc es ' +
+      'un mdoc, asi que su firmante es un Document Signer de mdoc y cuelga de ' +
+      'una IACA. Lo que cambia es en que lista se publica. Una PuB-EAA en ' +
+      'dc+sd-jwt no llevaria ese EKU y seria el perfil jws (no implementado). ' +
+      'OJO con el nombre: el anexo H exige que el organizationName del ' +
+      'certificado coincida EXACTAMENTE con el nombre de la entidad en la ' +
+      'lista, y ahi es un error de emision, no un aviso.',
+  },
   wrprc: {
     profile: 'jws',
     label: 'firmante de registration certificates',

@@ -196,7 +196,7 @@ export async function resumen(store) {
     return { ok: true, detalle: `${i.entries} entrada(s) · #${i.published.sequence}` };
   };
 
-  const listas = ['av-lab', 'pid-lab', 'wallet-lab', 'wrpac-lab', 'wrprc-lab'];
+  const listas = ['av-lab', 'pid-lab', 'wallet-lab', 'wrpac-lab', 'wrprc-lab', 'pubeaa-lab'];
   const estado = {
     tlso: firmantes.length
       ? { ok: true, detalle: `${firmantes.length} conforme(s)` }
@@ -206,6 +206,7 @@ export async function resumen(store) {
     wallet: deLista('wallet-lab'),
     wrpac: deLista('wrpac-lab'),
     wrprc: deLista('wrprc-lab'),
+    pubeaa: deLista('pubeaa-lab'),
   };
 
   const validas = rps.filter((r) => !r.problems.length).length;

@@ -1,0 +1,22 @@
+{
+  "id": "pubeaa-lab",
+  "kind": "lote-json",
+  "loteType": "EUPubEAAProvidersList",
+  "url": "https://trust-lab.espuni.com/lists/pubeaa-lab.json",
+  "lang": "en",
+  "schemeOperatorName": "espuni Trust Lab",
+  "schemeName": "Trust Lab list of public body EAA providers (TEST)",
+  "schemeInformationUri": "https://trust-lab.espuni.com/about",
+  "territory": "EU",
+  "address": {
+    "street": "Calle de Prueba 1",
+    "locality": "Madrid",
+    "postalCode": "28001",
+    "country": "ES"
+  },
+  "sequenceNumber": 0,
+  "validityDays": 30,
+  "providers": [],
+  "_providers": "Las entradas se eligen en la consola (/lists/<id>) o con add-provider/add-entity. Se siembra VACIA a proposito: un ancla de ejemplo es un certificado cuya clave privada no existe en ningun sitio, asi que la lista diria \"confia en esto\" y nadie podria emitir con ello.",
+  "_naming": "ANEXO H: el organizationName del certificado tiene que coincidir EXACTAMENTE con el nombre de la entidad. En los anexos D-G eso es un should y sale como aviso; aqui la norma lo repite como shall y aborta la emision. Es la unica lista donde un nombre que no case impide publicar."
+}

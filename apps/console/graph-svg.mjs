@@ -272,18 +272,14 @@ export const COLUMN_TITLES = [
  */
 export function graphResumenSvg(estado) {
   const W2 = 172, H2 = 54, GX = 74, GY = 26, P2 = 20;
-  const cols = [
-    [{ k: 'tlso', t: 'Firmante de listas' }],
-    [
-      { k: 'av', t: 'AV Trusted List' },
-      { k: 'pid', t: 'PID providers' },
-      { k: 'wallet', t: 'Wallet providers' },
-      { k: 'wrpac', t: 'WRPAC providers' },
-      { k: 'wrprc', t: 'WRPRC providers' },
-    ],
-    [{ k: 'rps', t: 'Relying parties' }],
-    [{ k: 'certs', t: 'Certificados emitidos' }],
-  ];
+  // Las columnas salen de `estado`, no de una lista escrita aqui. Antes estaban
+  // a mano —con sus cinco listas— y por eso `pubeaa-lab` no llegaba a dibujarse
+  // pese a existir, estar publicada y salir en la tabla de al lado.
+  const porGrupo = (g) => estado.filter((e) => e.grupo === g).map((e) => ({ ...e, t: e.pieza }));
+  const cols = [porGrupo('firmante'), porGrupo('lista'), porGrupo('rps'), porGrupo('certs')]
+    .filter((c) => c.length);
+  if (!cols.length) return '';
+  const byKey = new Map(estado.map((e) => [e.k, e]));
   const filas = Math.max(...cols.map((c) => c.length));
   const width = P2 * 2 + cols.length * W2 + (cols.length - 1) * GX;
   const height = P2 * 2 + filas * (H2 + GY);
@@ -296,16 +292,20 @@ export function graphResumenSvg(estado) {
     }));
   });
 
+  // El firmante firma todas las listas; los dos certificados de una relying
+  // party salen de las listas de WRPAC y WRPRC. Lo primero se deriva; lo segundo
+  // es semantico y va por id.
   const aristas = [
-    ['tlso', 'av'], ['tlso', 'pid'], ['tlso', 'wallet'], ['tlso', 'wrpac'], ['tlso', 'wrprc'],
-    ['wrpac', 'rps'], ['wrprc', 'rps'], ['rps', 'certs'],
+    ...porGrupo('lista').map((l) => ['tlso', l.k]),
+    ['wrpac-lab', 'rps'], ['wrprc-lab', 'rps'], ['rps', 'certs'],
   ];
   const lineas = aristas
     .map(([a, b]) => {
       const p = pos.get(a), q = pos.get(b);
+      if (!p || !q) return '';
       const x1 = p.x + W2, y1 = p.y + H2 / 2, x2 = q.x, y2 = q.y + H2 / 2;
       const mx = (x1 + x2) / 2;
-      const ok = estado[a]?.ok && estado[b]?.ok;
+      const ok = byKey.get(a)?.ok && byKey.get(b)?.ok;
       return `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" fill="none"
         stroke="${ok ? 'var(--dim)' : 'var(--border)'}" stroke-width="1.2"
         ${ok ? '' : 'stroke-dasharray="4 4"'} marker-end="url(#b)"/>`;
@@ -314,7 +314,7 @@ export function graphResumenSvg(estado) {
 
   const cajas = [...pos.values()]
     .map((n) => {
-      const e = estado[n.k] ?? {};
+      const e = byKey.get(n.k) ?? {};
       const [fill, stroke] = e.ok
         ? ['#3fb95018', 'var(--ok)']
         : e.parcial

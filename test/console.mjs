@@ -121,8 +121,16 @@ try {
     check(`GET ${ruta}`, r.status === 200, `${r.status}`);
   }
   const portada = await get('/');
+  const portadaHtml = await portada.text();
   check('la portada es informativa: sin formularios de emision',
-    !(await portada.text()).includes('<form method="post" action="/keys/ca"'));
+    !portadaHtml.includes('<form method="post" action="/keys/ca"'));
+  // El diagrama de la portada se alimenta del mismo `estado` que la tabla, y su
+  // wiring vive en index.mjs, no en la vista: si se le pasa otra cosa, degrada
+  // en silencio en vez de fallar. Que aparezcan las seis listas es la forma
+  // barata de comprobar que sigue enchufado.
+  const sinDibujar = ['av-lab', 'pid-lab', 'wallet-lab', 'wrpac-lab', 'wrprc-lab', 'pubeaa-lab']
+    .filter((id) => !portadaHtml.includes(id));
+  check('la portada dibuja las seis listas', sinDibujar.length === 0, sinDibujar.join(', '));
   check('noindex en las paginas', portada.headers.get('x-robots-tag') === 'noindex');
   const svg = await get('/graph.svg');
   check('/graph.svg se descarga como SVG',

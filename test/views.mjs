@@ -82,5 +82,36 @@ for (const [nombre, args] of Object.entries(MINIMOS)) {
     }
   }
 }
+// El diagrama-resumen de la portada tiene su propio test de CONTENIDO, y no de
+// "no revienta": cuando `estado` paso de objeto a array, `graphResumenSvg` siguio
+// indexandolo por clave y degrado en silencio —`?? {}` y `?.` por todas partes—,
+// asi que pinto todas las cajas en rojo, sin sus numeros y sin la sexta lista.
+// Ni este test ni el de la consola lo cazaron: los dos miraban que la pagina se
+// renderizara. La unica forma de que no vuelva a pasar es afirmar que cada pieza
+// del estado ACABA dibujada.
+{
+  const { graphResumenSvg } = await import('../apps/console/graph-svg.mjs');
+  const estado = [
+    { k: 'tlso', grupo: 'firmante', pieza: 'Firmante de listas', donde: '/keys', ok: true, detalle: '2 conforme(s)' },
+    { k: 'av-lab', grupo: 'lista', pieza: 'av-lab', donde: '/lists/av-lab', ok: true, detalle: '3 entrada(s) · #7' },
+    { k: 'pubeaa-lab', grupo: 'lista', pieza: 'pubeaa-lab', donde: '/lists/pubeaa-lab', ok: false, detalle: 'vacia' },
+    { k: 'rps', grupo: 'rps', pieza: 'Relying parties', donde: '/rps', ok: false, parcial: true, detalle: '1/2 validas' },
+    { k: 'certs', grupo: 'certs', pieza: 'Certificados emitidos', donde: '/rps', ok: false, detalle: 'ninguno emitido' },
+  ];
+  const svg = graphResumenSvg(estado);
+  const faltan = estado.filter((e) => !svg.includes(e.pieza) || !svg.includes(e.detalle));
+  if (faltan.length) {
+    fallos += 1;
+    console.log(`  FALLO graphResumenSvg → no dibuja: ${faltan.map((e) => e.pieza).join(', ')}`);
+  } else {
+    console.log('  ok   graphResumenSvg dibuja cada pieza del estado, con su detalle');
+  }
+  // Y los tres colores salen del estado, no de un default: una lista lista en
+  // verde, una vacia en rojo y las relying parties a medias en ambar.
+  const colores = ['var(--ok)', 'var(--bad)', 'var(--warn)'].every((c) => svg.includes(c));
+  if (colores) console.log('  ok   graphResumenSvg colorea segun ok/parcial/pendiente');
+  else { fallos += 1; console.log('  FALLO graphResumenSvg no colorea por estado'); }
+}
+
 console.log(fallos ? `\n${fallos} FALLO(S)` : '\nTODO OK');
 process.exit(fallos ? 1 : 0);

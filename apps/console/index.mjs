@@ -13,7 +13,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { Crypto } from '@peculiar/webcrypto';
 import { cryptoProvider } from '@peculiar/x509';
-import { openStore, seedIfEmpty } from '../../packages/store/src/index.mjs';
+import { openStore, seedMissing } from '../../packages/store/src/index.mjs';
 import * as ops from '../../packages/ops/src/index.mjs';
 import { assertRegistry } from '../../packages/registry/src/index.mjs';
 import { describeKey, assertTlsoProfile, SIGNER_ROLES, signerRole } from '../../packages/ca/src/index.mjs';
@@ -461,7 +461,7 @@ const server = createServer(async (req, res) => {
 
 // Solo la consola siembra: es la superficie de escritura. El publisher sirve lo
 // que haya, y si no hay nada, no hay nada — no es su papel crear estado.
-const seed = await seedIfEmpty(store, ROOT);
+const seed = await seedMissing(store, ROOT);
 if (seed.seeded.length) {
   console.log(`siembra inicial: ${seed.seeded.length} documento(s) — ${seed.seeded.join(', ')}`);
 }

@@ -4,9 +4,9 @@
 // reales sin levantar un servidor.
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { memoryStore, fileStore, sqlStore, pgliteQuery, encryptedKeys, KeyEncryptionRequiredError } from '../src/index.mjs';
+import { memoryStore, fileStore, sqlStore, pgliteQuery, encryptedKeys, KeyEncryptionRequiredError, seedMissing } from '../src/index.mjs';
 
 let failures = 0;
 const check = (name, cond, detail = '') => {
@@ -113,6 +113,35 @@ eq('lee material antiguo sin cifrar', (await enc.get('vieja')).key, { d: 'en-cla
 // faltaba, y no se noto hasta intentar borrar una clave sin dependencias.
 await enc.delete('vieja');
 eq('el envoltorio de cifrado tambien borra', await enc.get('vieja'), null);
+
+// --- siembra ---------------------------------------------------------------
+//
+// Lo que cuesta un despliegue: una lista nueva llega con el codigo, y el almacen
+// del despliegue es anterior. La siembra comprobaba si el almacen tenia ALGUN
+// documento y se rendia, asi que esa lista no llegaba nunca — el dashboard la
+// pintaba como "no existe" y la unica salida era un reset destructivo.
+console.log('\n== siembra ==');
+{
+  // La raiz del repo, que es donde vive state/. El runner lo llama desde la
+  // raiz (npm test) y a mano se puede llamar desde el paquete.
+  const raiz = process.cwd().endsWith(`${sep}packages${sep}store`) ? join('..', '..') : '.';
+  const semilla = sqlStore({ query: pgliteQuery(await PGlite.create()) });
+  await semilla.migrate();
+
+  const primera = await seedMissing(semilla, raiz);
+  check('siembra un almacen vacio', primera.seeded.length > 0, `(sembro ${primera.seeded.length})`);
+
+  const segunda = await seedMissing(semilla, raiz);
+  eq('repetirla no siembra nada', segunda.seeded, []);
+
+  // El caso real: falta UN documento y el resto ya esta.
+  const uno = primera.seeded[0];
+  const antes = await semilla.docs.get('*', uno);
+  await semilla.docs.delete(antes.kind ?? 'doc', uno);
+  const tercera = await seedMissing(semilla, raiz);
+  eq('siembra el que falta, y solo ese', tercera.seeded, [uno]);
+  check('y lo deja igual que estaba', JSON.stringify(await semilla.docs.get('*', uno)) === JSON.stringify(antes));
+}
 
 console.log(failures === 0 ? '\nTODO OK' : `\n${failures} FALLO(S)`);
 process.exit(failures === 0 ? 0 : 1);

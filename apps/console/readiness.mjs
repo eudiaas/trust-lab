@@ -257,7 +257,16 @@ export async function resumen(store) {
   if (!firmantes.length) faltan.push({ que: 'Un firmante de listas', donde: '/keys' });
   for (const id of listas) {
     const i = porId.get(id);
-    if (!i) continue;
+    // Un documento que no esta en el almacen NO se salta. Saltarlo era lo que
+    // dejaba decir "el marco esta completo" con una lista entera ausente: la
+    // tabla de arriba la pintaba como "no existe" y el mensaje no se enteraba.
+    // Pasa cuando el codigo trae una lista nueva y el almacen es anterior; la
+    // siembra la crea al arrancar, asi que el aviso apunta a reiniciar y el
+    // enlace va al indice, porque /lists/<id> da 404 mientras no exista.
+    if (!i) {
+      faltan.push({ que: `Falta el documento de la lista ${id} (se siembra al arrancar)`, donde: '/lists' });
+      continue;
+    }
     if (!i.entries) faltan.push({ que: `${i.title} esta vacia`, donde: `/lists/${id}` });
     else if (!i.published) faltan.push({ que: `${i.title} sin publicar`, donde: `/lists/${id}` });
     else if (i.published.stale) faltan.push({ que: `${i.title} caducada`, donde: `/lists/${id}` });

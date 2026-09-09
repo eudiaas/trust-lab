@@ -217,9 +217,16 @@ export async function resumen(store) {
    * emitido. Sale como array y no como objeto para que la vista no tenga que
    * repetir la lista de piezas ni saber donde vive cada una: eso ya se decide
    * aqui, igual que el `donde` de `faltan`.
+   *
+   * Cada entrada lleva `k` (clave estable, el id del documento en las listas) y
+   * `grupo`, que es lo que necesita el diagrama-resumen para colocarla en su
+   * columna sin volver a enumerar las piezas por su cuenta. Tenerlas a mano alli
+   * es como el diagrama acabo dibujando cinco listas cuando ya habia seis.
    */
   const estado = [
     {
+      k: 'tlso',
+      grupo: 'firmante',
       pieza: 'Firmante de listas',
       donde: '/keys',
       ...(firmantes.length
@@ -232,11 +239,15 @@ export async function resumen(store) {
     // id es ademas el asa que el operador usa en el CLI, en las URLs y en el
     // manual. `faltan` sigue usando el nombre largo porque ahi es una frase.
     ...listas.map((id) => ({
+      k: id,
+      grupo: 'lista',
       pieza: id,
       donde: `/lists/${id}`,
       ...deLista(id),
     })),
     {
+      k: 'rps',
+      grupo: 'rps',
       pieza: 'Relying parties',
       donde: '/rps',
       ...(rps.length
@@ -244,6 +255,8 @@ export async function resumen(store) {
         : { ok: false, detalle: 'ninguna dada de alta' }),
     },
     {
+      k: 'certs',
+      grupo: 'certs',
       pieza: 'Certificados emitidos',
       donde: '/rps',
       ...(access + wrprcEmitidos

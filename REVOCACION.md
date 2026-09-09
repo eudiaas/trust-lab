@@ -119,6 +119,19 @@ identificador (`…/crl/<ca>.crl`) y sin ninguna entrada. Tres razones:
 
 ### 3.2 Toda emisión lleva `CDP`, sin excepción
 
+> **Qué es el `CDP`.** *CRL Distribution Point*: la extensión X.509
+> `crlDistributionPoints` (OID 2.5.29.31, RFC 5280 §4.2.1.13). Va **dentro del
+> certificado emitido**, firmada por la CA junto con todo lo demás, y dice
+> **dónde se publica la CRL que cubre a ese certificado**. Es el mecanismo de
+> descubrimiento: el verificador tiene el certificado en la mano, lee su `CDP`,
+> descarga esa CRL y busca su número de serie.
+>
+> Es el equivalente exacto, en X.509, del `status.status_list = { uri, idx }`
+> del WRPRC: **el puntero al estado viaja dentro del propio artefacto firmado**.
+> De ahí las dos consecuencias que ordenan medio diseño — no se puede añadir
+> después (cambiaría la firma, §3.7), y la URL de la CRL tiene que existir antes
+> de emitir la primera hoja (§3.1).
+
 Un verificador no busca la CRL: la encuentra —o no— por la extensión
 `crlDistributionPoints` **del certificado que está comprobando**. Sin ella no
 hay nada que consultar, y está medido que el consumidor entonces **da el
@@ -354,29 +367,75 @@ CRL es un nodo propio con arista a su CA, como las status lists.
 los runners de GitHub y en el contenedor, y es para la CRL lo que "todo lo
 firmado se relee" es para el resto: un tercero que no comparte nuestro código.
 
-### 6.1 Y las listas lo declaran
+### 6.1 Y las listas **no** lo declaran
 
-Que cada CA ofrezca revocación se queda en casa si no se **publica** dónde. Los
+Tentación evidente: si cada CA ofrece revocación, publicarlo en la lista. Los
 anexos de TS 119 602 definen para cada tipo de lista un segundo tipo de
-servicio, `…/Revocation`, *«a service providing validity status information»*,
-y la cláusula 6.6.7 da el sitio donde va la URI: el `ServiceSupplyPoint`. Hasta
-ahora `buildLote` sólo emitía el servicio de emisión, y con razón — no había
-ningún servicio de estado que declarar. Con la regla de esta nota, sí lo hay:
+servicio, `…/Revocation`, y la cláusula 6.6.7 da el sitio de la URI (el
+`ServiceSupplyPoint`). La conclusión, sin embargo, es que **no hay que declarar
+ninguno** — y el porqué obliga a leer con cuidado de qué habla ese servicio.
 
-| Lista | Servicio de revocación | A qué apunta su supply point | Identidad digital del servicio |
+**El eje es lo que la entidad EMITE, no qué certificado suyo se publica.** Los
+cinco anexos usan la misma fórmula: *«a service providing validity status
+information on [lo que emite la entidad]»*. Y la identidad digital del servicio
+(6.6.3) es, también en los cinco, el certificado que verifica la firma del
+proveedor **sobre lo que emite**:
+
+| Anexo | La entidad emite | Su `…/Revocation` informaría del estado de | Qué certificado suyo va en la lista |
 |---|---|---|---|
-| WRPAC providers (anexo F) | `…/SvcType/WRPAC/Revocation` | la **CRL** de la Access CA | el certificado de la CA, que es quien firma la CRL |
-| WRPRC providers (anexo G) | `…/SvcType/WRPRC/Revocation` | la **status list** del emisor | el certificado del firmante de la status list |
-| PID providers (anexo D) | `…/SvcType/PID/Revocation` | el estado de los PID, que **no** emitimos | — (no se declara) |
-| PubEAA (anexo H) | `…/SvcType/PubEAA/Revocation` | el estado de las atestaciones, si algún día se emiten con una | — (no se declara) |
-| AV Trusted List (XML) | no hay tipo de servicio aparte | tabla I.3: `Service supply points` sin requisitos adicionales → cabe la **CRL de la IACA**, que en AV es el único estado que existe (la atestación de edad no lleva status list) | — |
+| D — PID providers | datos de identidad (PID) | los PID | la **hoja** (Document Signer) |
+| E — Wallet providers | wallet units | las wallet units | la **hoja** |
+| F — WRPAC providers | access certificates (X.509) | los access certificates | la **CA emisora** |
+| G — WRPRC providers | registration certificates (JWT) | los WRPRC | la **hoja** firmante |
+| H — PubEAA | atestaciones de atributos | las atestaciones | la **hoja** firmante |
 
-Dos consecuencias que conviene ver juntas: para el **WRPRC** el servicio ya
-existía y sólo faltaba declararlo —el `{uri, idx}` viaja dentro del propio
-certificado, así que declararlo es redundante para quien ya lo tiene y útil
-para quien mira la lista—, y para el **WRPAC** no se podía declarar porque no
-había CRL. Es decir que esta pieza no es trabajo nuevo: es el hueco que dejó
-documentado `packages/lote` cerrándose solo en cuanto existe la §3.1.
+Que en el anexo F lo publicado sea la CA es **consecuencia** de lo que esa
+entidad emite —para verificar la firma *sobre* un access certificate hace falta
+el certificado de quien lo firmó, que es la CA—, no la causa de que exista el
+servicio de revocación. El servicio existe igual en los cinco anexos, publiquen
+CA o publiquen hoja.
+
+**Corolario, y es el que contesta la pregunta de fondo:** el estado del
+*propio* certificado que está en la lista **nunca** se expresa con un servicio
+`…/Revocation`, sea CA o sea hoja. Ese estado lo dice la lista misma — quitando
+la entrada (anexos D–G), con `withdrawn` (anexo H) o con `deprecated` (AV TL).
+Un `…/Revocation` que apuntara a "la CRL donde se revoca esta ancla" estaría
+usando el campo para otra cosa que la que la norma le da.
+
+**Y aun así, declararlo no aporta.** Los anexos dicen *may be used*, y en los
+dos casos que nos tocan el estado ya es descubrible desde el propio artefacto,
+firmado por quien corresponde:
+
+- **WRPRC**: el `status.status_list = { uri, idx }` viaja **dentro del
+  certificado** (TS 119 475, REV-6.2.6.2-03). Quien tiene el WRPRC ya sabe
+  dónde mirar y en qué posición; quien sólo mira la lista no tiene ningún
+  WRPRC que comprobar. **No se declara.**
+- **WRPAC**: exactamente lo mismo un escalón más abajo — el `CDP` viaja dentro
+  del access certificate, firmado por la CA. **Tampoco se declara.**
+
+La regla que queda es corta: *el servicio de estado se declara en la lista
+cuando NO es descubrible desde el artefacto*. Hoy no se da ese caso. Se daría
+en dos escenarios, ninguno de los cuales montamos: un **status issuer
+delegado** (la §1 del borrador de Token Status List admite *«an entity that has
+been authorized by the Issuer»*, con la delegación expresada por el EKU
+`id-kp-oauthStatusSigning`) y una **CRL indirecta**, firmada por una clave
+distinta de la CA emisora. En los dos, la lista sería el único sitio donde
+consta que ese tercero está autorizado — y en los dos, el certificado que
+habría que publicar en el servicio de revocación es el **del tercero**, no el
+de la entidad. Las CRLs indirectas están fuera de alcance (§10).
+
+Con lo cual `buildLote` sigue emitiendo **sólo el servicio de emisión**, que es
+lo que ya hace, y por el motivo que ya tiene escrito en `packages/lote`. Esta
+sección existe para que no se vuelva a proponer.
+
+> **Dos erratas de la norma, de paso.** El anexo G define su servicio de
+> revocación como *«validity status information on wallet relying party
+> **access** certificates»* — copiado del anexo F; debería decir *registration*,
+> y la fila de identidad digital justo debajo sí dice "registration
+> certificates". El anexo H arrastra la misma frase, donde debería hablar de
+> atestaciones de atributos. Es la tercera errata que nos encontramos en este
+> documento, después del `WRPRCrovidersList` sin la P que el repo ya reproduce
+> tal cual.
 
 ## 7. La CRL como banco de pruebas
 
@@ -439,10 +498,14 @@ revocación.
 |---|---|---|---|
 | **F1** | La maquinaria por CA: documento `x509-crl` creado por `mintKey`, `revokeCert` / `buildCrl` / `checkRevoked`, `CDP` impuesto por la CA en `mintLeaf` / `mintRoleSigner` / `mintWrpac`, ruta en el publisher, comandos de CLI y sección en la consola. Tests unitarios, e2e y contraste con OpenSSL | Es la regla de la §0, entera. Vale igual para la Access CA, para las tres IACA y para cualquier CA que se cree mañana, porque nada de esto es específico de un rol | ~1 jornada |
 | **F2** | Reemitir el material vivo para que salga con `CDP`, y la pregunta *"¿qué hay fuera de cobertura?"* en la pantalla de estado | Sin esto, F1 cubre lo que se emita a partir de ahora y deja el pasado invisible (§3.7) | ~2 h |
-| **F3** | Declarar el servicio `…/Revocation` con su `ServiceSupplyPoint` en las listas de WRPAC y WRPRC (§6.1) | Es lo que hace que la revocación sea **descubrible** desde la lista y no sólo desde el certificado | ~2 h |
-| **F4** | Estados de servicio: `deprecated` en la AV TL y `withdrawn` en `pubeaa-lab`, preservando `status` en `setProviders` (+ `ServiceHistory` en el XML) | Cierra la revocación de anclas en las dos listas que la expresan con un estado en vez de con una baja | ~2 h |
-| **F5** | Los casos torcidos de la §7 como material de laboratorio | Es donde está el valor de medida: distinguir "implementa CRL" de "comprueba revocación" | ~½ jornada |
-| **F6** (opcional) | Sub-CAs: `mint-ca --issuer` y `--path-len`, para poder revocar una CA entera (§3.6) | Sólo hace falta para el escenario "la wallet acepta una cadena con la intermedia revocada". No es parte de la regla | ~3 h |
+| **F3** | Estados de servicio: `deprecated` en la AV TL y `withdrawn` en `pubeaa-lab`, preservando `status` en `setProviders` (+ `ServiceHistory` en el XML) | Cierra la revocación de anclas en las dos listas que la expresan con un estado en vez de con una baja | ~2 h |
+| **F4** | Los casos torcidos de la §7 como material de laboratorio | Es donde está el valor de medida: distinguir "implementa CRL" de "comprueba revocación" | ~½ jornada |
+| **F5** (opcional) | Sub-CAs: `mint-ca --issuer` y `--path-len`, para poder revocar una CA entera (§3.6) | Sólo hace falta para el escenario "la wallet acepta una cadena con la intermedia revocada". No es parte de la regla | ~3 h |
+
+No hay fase para *declarar el servicio de revocación en las listas*: no se
+declara (§6.1). El estado ya viaja dentro de cada artefacto —el `CDP` en el
+access certificate, el `{uri, idx}` en el WRPRC— y la lista no es el sitio
+donde se dice el estado de lo que un proveedor emite.
 
 Dentro de F1, el orden natural es Access CA primero **como banco de pruebas del
 código**, no como alcance: es la que tiene consumidor externo real (la wallet
@@ -459,6 +522,10 @@ publican su CRL.
   inmutables.
 - **Delta CRLs e `IssuingDistributionPoint`.** Optimización para CRLs enormes.
   La nuestra pesa 294 bytes.
+- **CRLs indirectas** (firmadas por una clave distinta de la CA emisora). Es
+  uno de los dos únicos escenarios en los que la lista tendría que declarar el
+  servicio de revocación (§6.1); montarlo para poder declararlo sería la cola
+  moviendo al perro.
 - **Revocar el TLSO por CRL como mecanismo real.** Se cambia el pin y se
   reemite; la CRL del TLSO solo tiene sentido como caso de prueba.
 - **Suspensión (`certificateHold`).** La norma resuelve la suspensión del

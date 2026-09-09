@@ -1,10 +1,10 @@
 # Revocación — nota de diseño
 
-> **Estado: propuesta.** Nada de lo que describe la §4 en adelante está
+> **Estado: propuesta.** Nada de lo que se propone de la §3 en adelante está
 > implementado. Sí lo están las dos piezas de la §1 marcadas ✅: la status list
-> de los WRPRC y la baja de una entidad en una lista. Esta nota existe para que
-> la decisión y sus motivos queden escritos antes de tocar código —
-> 2026-09-09.
+> de los WRPRC y la baja de una entidad en una lista. La §4 y la §8 no son
+> propuesta: son mediciones hechas. Esta nota existe para que la decisión y sus
+> motivos queden escritos antes de tocar código — 2026-09-09.
 
 ## 0. La pregunta, y la respuesta corta
 
@@ -17,15 +17,28 @@ tipo de artefacto: la status list para los WRPRC, la propia lista de confianza
 para las anclas, y la CRL para los certificados X.509. Dos de los tres ya
 existen en este laboratorio. Lo que falta es el tercero, y falta entero.
 
-La regla que se propone adoptar es la más simple que cubre el despliegue:
+La regla que se propone adoptar:
 
-> **Toda hoja que emita este laboratorio cuelga de una CA y es revocable por la
-> CRL de esa CA. Toda CA publica su CRL desde el primer día, aunque esté
-> vacía.**
+> **Toda CA del marco de confianza ofrece servicio de revocación de los
+> certificados que emite.** No es un rasgo de algunas CAs ni una fase posterior:
+> una CA sin CRL publicada es una CA incompleta, igual que una lista sin
+> firmante. La CRL nace con la CA —vacía— y toda hoja sale con su `CDP`
+> apuntando a ella.
 
-Esa regla no es gratis: obliga a una jerarquía de dos niveles, deja fuera los
-certificados autofirmados y exige reemitir lo ya emitido. Las tres
-consecuencias están en la §3.
+Conviene separar dos cosas que se confunden con facilidad, porque la propuesta
+es la primera y no la segunda:
+
+- **Que una CA *ofrezca* revocación** — que publique el estado de lo que ha
+  emitido. Esto es lo que pide la norma a cualquier emisor (TS 119 411-8 §6.3.10
+  *Certificate Status Services*, §6.6.2 *CRL Profile*) y lo que esta nota
+  propone para **todas** las CAs del despliegue, sin excepción.
+- **Que una CA *sea* revocable** — que alguien por encima pueda anularla. Eso
+  exige jerarquía, y para una raíz autofirmada no existe: se retira sacándola de
+  la lista de confianza. Es un asunto aparte, opcional, y está en la §3.6.
+
+La regla no sale gratis: obliga a que toda emisión lleve `CDP`, deja fuera los
+certificados autofirmados —que no tienen CA que los revoque— y exige reemitir lo
+ya emitido. Las consecuencias, una a una, en la §3.
 
 ## 1. Tres mecanismos, uno por artefacto
 
@@ -46,101 +59,152 @@ Dos lecturas que conviene no perder:
   CRL de una hoja publicada como ancla es, para el veredicto, un cinturón
   encima de los tirantes — lo cual no la hace inútil (§7), pero sí secundaria.
 
-## 2. Inventario: qué emite este laboratorio y quién podría revocarlo
+## 2. Inventario
 
-| Se emite con | Qué es | Emisor hoy | ¿Revocable por CRL? |
+### 2.1 Las CAs del marco, y qué tendría que revocar cada una
+
+Una CA es cualquier clave del almacén con `CA:TRUE` y `cRLSign`, que es lo que
+emite `mint-ca`. En un despliegue completo del laboratorio hay al menos estas,
+y **todas** entran en la regla:
+
+| CA | Qué emite | Qué publicaría su CRL |
+|---|---|---|
+| **Access CA** (WRPAC) | access certificates de cada RP | el access certificate de un RP cuyo registro se suspende o se cancela — REV-6.3.9-04 |
+| **IACA de AV** | Document Signers de las atestaciones de edad | un DS comprometido o retirado; en AV es **el único** estado que hay, porque la atestación no lleva status list |
+| **IACA de PID** | Document Signers del PID | ídem |
+| **IACA de PubEAA** | Document Signers de las PuB-EAA | ídem |
+| **CA de firmantes** (si se usa en vez de autofirmar) | firmantes de WRPRC, WIA y Key Attestation | el firmante retirado, sin tener que reemitir la lista que lo publica |
+| **CA del TLSO** (opcional, §3.4) | el certificado que firma las listas | un TLSO retirado |
+
+A esas se suman las **anclas ajenas**: certificados de CA que están en una lista
+sin que tengamos su clave privada (hoy el grafo ya los marca como huérfanos).
+Ésas no entran en la regla — su estado lo publica su dueño, no nosotros—, pero
+la consola debería distinguirlas de una CA nuestra sin CRL, que sí es un hueco.
+
+### 2.2 Las hojas, y quién las revoca
+
+| Se emite con | Qué es | Emisor hoy | ¿Quién publica su estado? |
 |---|---|---|---|
-| `mint-ca` | CA raíz (IACA, Access CA, CA de firmantes) | autofirmada | **No** — es el ancla; se retira sacándola de la lista (§3.4) |
-| `mint-leaf <ca>` | hoja genérica | esa CA | ✅ |
-| `mint-signer <ca> … mdoc-ds` \| `pid-ds` \| `pubeaa-ds` | Document Signer | la IACA | ✅ |
-| `mint-signer <ca> … wrprc` \| `wia` \| `key-attestation` | firmante de credenciales | esa CA | ✅ |
-| `mint-signer - … wrprc` \| `wia` \| `key-attestation` | el mismo, **autofirmado** | ninguno | ❌ (§3.2) |
-| `mint-tl-signer` | TLSO (firma las listas) | **autofirmado siempre** | ❌ (§3.3) |
-| `mint-wrpac` | access certificate del RP | la Access CA | ✅ |
-| — | sub-CA | **no se puede emitir hoy** | (§3.1) |
+| `mint-leaf <ca>` | hoja genérica | esa CA | la CRL de esa CA |
+| `mint-signer <ca> … mdoc-ds` \| `pid-ds` \| `pubeaa-ds` | Document Signer | la IACA | la CRL de la IACA |
+| `mint-signer <ca> … wrprc` \| `wia` \| `key-attestation` | firmante de credenciales | esa CA | la CRL de esa CA |
+| `mint-wrpac` | access certificate del RP | la Access CA | la CRL de la Access CA |
+| `mint-signer - … wrprc` \| `wia` \| `key-attestation` | el mismo, **autofirmado** | ninguno | **nadie** (§3.3) |
+| `mint-tl-signer` | TLSO | **autofirmado siempre** | **nadie** hoy (§3.4) |
+| `mint-ca` | CA raíz | autofirmada | **nadie**: se retira sacándola de la lista (§3.6) |
 
-De las ocho filas, cinco son ya revocables en cuanto exista la maquinaria, dos
-no lo son por construcción y una no existe. La lista de PubEAA no añade una
-fila: su Document Signer cuelga de una IACA como los demás. Lo que sí añade es
-la **segunda** forma de revocar un ancla (`withdrawn`, §1), que hasta que esa
-lista existió no tenía ocupante. La regla de la §0 obliga a mover
-esas tres.
+Cuatro de las siete filas quedan cubiertas por la misma maquinaria en cuanto
+exista, porque la CRL es genérica: lo único que cambia es qué CA la firma. Las
+tres restantes son autofirmadas, y ése es el hueco que la regla obliga a mirar
+de frente (§3.3 y §3.4).
 
-## 3. Consecuencias de "toda hoja revocable"
+## 3. Consecuencias de "toda CA ofrece revocación"
 
-### 3.1 Hace falta jerarquía, y hoy está prohibida por un `pathLen`
+### 3.1 La CRL nace con la CA, y se publica vacía
 
-Para que una CA sea revocable tiene que colgar de otra. Eso significa **sub-CAs**
-(`mint-ca --issuer <raíz>`), que hoy no existen: `mintCa` siempre autofirma.
+Si la revocación es una propiedad de la CA y no un añadido posterior, entonces
+`mint-ca` crea el documento de CRL en el mismo acto, con su URL derivada del
+identificador (`…/crl/<ca>.crl`) y sin ninguna entrada. Tres razones:
 
-Y hay un detalle que muerde: `mintCa` emite `BasicConstraints(CA:TRUE, pathLen:
-0)`, y `pathLen 0` **prohíbe cualquier CA por debajo**. Comprobado con OpenSSL
-sobre una jerarquía de tres niveles: `error 25 at 2 depth: path length
-constraint exceeded`. Una raíz destinada a emitir sub-CAs tiene que salir con
-`pathLen: 1`.
+1. **La URL tiene que existir antes que la primera hoja.** El `CDP` viaja
+   *dentro* de cada certificado emitido; si la CRL se creara después, todo lo
+   emitido hasta entonces quedaría fuera de cobertura para siempre (§3.7).
+2. **Una CRL vacía no es lo mismo que no tener CRL.** La primera dice "no hay
+   nada revocado, y lo firmo"; la segunda no dice nada, y cada consumidor
+   decide por su cuenta qué hacer con el silencio — que es justo lo que se
+   quiere poder medir (§7). Cuesta 242 bytes.
+3. **Una CA sin CRL es una CA incompleta.** Debería aparecer como hueco en la
+   pantalla de estado, junto a "lista sin firmante" y "ancla sin clave", no
+   como una casilla opcional que nadie mira.
 
-Propuesta: `mint-ca` sigue dando `pathLen 0` por defecto (una CA que solo emite
-hojas es lo normal y lo más estrecho), y `--issuer` implica subir el `pathLen`
-de la raíz que la emite… lo cual no se puede hacer a posteriori sin reemitir la
-raíz. Así que en la práctica: **la decisión de si una raíz va a tener sub-CAs se
-toma al crearla** (`mint-ca --path-len 1`), y quien no la tome se queda con un
-nivel. Documentarlo es más honesto que esconderlo tras una reemisión silenciosa
-del ancla — reemitir la raíz invalida todo lo que cuelga de ella.
+### 3.2 Toda emisión lleva `CDP`, sin excepción
 
-### 3.2 Un certificado autofirmado no es revocable, y no es un descuido
+Un verificador no busca la CRL: la encuentra —o no— por la extensión
+`crlDistributionPoints` **del certificado que está comprobando**. Sin ella no
+hay nada que consultar, y está medido que el consumidor entonces **da el
+certificado por bueno**: EUDIPLO devuelve literalmente `isValid: true` con el
+motivo *"No CRL Distribution Points in certificate"* (§8).
 
-Dos razones independientes, y cualquiera de las dos basta:
+Así que el `CDP` deja de ser un parámetro opcional de `mintCa` —donde además
+está en el sitio equivocado, §4.1— y pasa a ser algo que **la propia CA
+impone** a todo lo que firma: `mintLeaf`, `mintRoleSigner` y `mintWrpac` lo
+reciben del documento de CRL de su emisor, no de quien llama.
+
+### 3.3 Un certificado autofirmado no tiene quien lo revoque
+
+No es un defecto de implementación: no hay CA. Y aunque se quisiera forzar que
+se revocara a sí mismo, no funcionaría, por dos razones independientes:
 
 1. **No tiene `cRLSign`.** Nuestras hojas llevan KeyUsage `digitalSignature` a
-   secas (es lo que exige su perfil), y RFC 5280 pide `cRLSign` en quien firma
-   una CRL. Un verificador estricto rechaza esa CRL.
+   secas, que es lo que exige su perfil, y RFC 5280 pide `cRLSign` en quien
+   firma una CRL. Un verificador estricto rechaza esa CRL.
 2. **Aunque lo llevara, no protegería de nada.** El caso que la revocación
    tiene que cubrir es "esta clave está comprometida", y quien tiene la clave
-   comprometida firma también su propia CRL — incluida una que diga que todo
-   está bien.
+   comprometida firma también la CRL — incluida una que diga que todo va bien.
 
-Así que la regla de la §0 implica: **un firmante que quiera ser revocable no
-puede ser autofirmado.** La regla de las tres opciones que documenta el
-`MANUAL.md` (autofirmado legítimo cuando la lista publica el certificado
-firmante) sigue siendo cierta desde el punto de vista del anclaje, pero ahora
-tiene un contrapeso que hay que decir en la interfaz: *autofirmado = no
-revocable*. La consola debería mostrarlo como una propiedad del certificado, al
-lado del perfil, y el grafo pintarlo (una hoja sin arista a ninguna CRL).
+La regla de las tres opciones del `MANUAL.md` (autofirmar es legítimo cuando la
+lista publica el certificado firmante) sigue siendo cierta **para el anclaje**,
+pero ahora tiene un contrapeso que la interfaz tiene que decir: *autofirmado =
+sin servicio de revocación*. Ahí la única retirada posible es reemitir la lista
+sin él, que es más lenta y más ruidosa — y en la AV TL, con `NextUpdate` de por
+medio, puede tardar días en llegar a un consumidor que cachea.
 
-No se propone prohibir el autofirmado: se propone **etiquetarlo**, y ofrecer
-"reemitir bajo una CA" como acción a un clic. En un laboratorio, poder montar
-el escenario no revocable es parte del material de pruebas.
+No se propone prohibirlo: se propone **etiquetarlo** en la consola y en el
+grafo (una hoja sin arista a ninguna CRL), y ofrecer *"reemitir bajo una CA"* a
+un clic. Montar el escenario sin revocación es, en un laboratorio, material de
+pruebas legítimo — pero tiene que verse que es ese escenario y no un descuido.
 
-### 3.3 El TLSO: la norma admite las dos formas
+### 3.4 El TLSO: la norma admite las dos formas
 
 TS 119 612 §5.7.1, literal: *«The Issuer shall be the TLSO itself (i.e. a
 self-signed certificate) **or a TSP trust service listed in the TL** or in one
 of the TL that is part of the same community»*.
 
 O sea que un TLSO emitido por una CA **listada en la propia lista** es
-conforme, y revocable. El problema es que en la AV TL los servicios listados
-son PAAPs: meter ahí una CA solo para que emita el firmante distorsiona la
-lista que estamos imitando. Y §5.7.1 remata que el `ds:KeyInfo` no puede llevar
-cadena, así que el consumidor pinea el certificado suelto.
+conforme, y entonces esa CA le ofrece revocación como a cualquier otra hoja. El
+problema es que en la AV TL los servicios listados son PAAPs: meter ahí una CA
+solo para que emita el firmante distorsiona la lista que estamos imitando. Y
+§5.7.1 remata que el `ds:KeyInfo` no puede llevar cadena, así que el consumidor
+pinea el certificado suelto y no recorre nada.
 
 Propuesta: **`mint-tl-signer` sigue autofirmando por defecto** y gana un
-`--issuer` opcional que avisa de la divergencia. La revocación real de un TLSO
-es cambiar el pin y reemitir; la CRL, aquí, es material de pruebas (§7).
+`--issuer` opcional, avisando de la divergencia. La retirada real de un TLSO es
+cambiar el pin y reemitir; su CRL, aquí, es material de pruebas (§7).
 
-### 3.4 Las raíces no se revocan: se sacan de la lista
+### 3.5 Las anclas ajenas no entran en la regla
 
-Una raíz autofirmada tendría que firmar su propia revocación, lo que no
-significa nada. Su mecanismo de retirada es el de la §1: desaparecer de la
-lista de confianza (LoTE) o pasar a `deprecated` (AV TL). Es coherente con lo
-que ya hacemos y no necesita nada nuevo.
+En una lista puede haber certificados de CA de los que no tenemos clave privada
+—hoy el grafo ya los marca como huérfanos—. Su estado lo publica su dueño, y si
+su certificado trae `CDP`, apunta a **su** CRL, no a la nuestra. La consola
+tiene que distinguir los dos casos, porque se parecen en la pantalla y no se
+parecen en nada más: *ancla ajena sin CRL nuestra* es normal; *CA nuestra sin
+CRL* es un hueco del marco.
 
-### 3.5 Lo ya emitido no lleva CDP: hay que reemitirlo
+### 3.6 Que una CA sea revocable es otro asunto (y es opcional)
 
-Un verificador encuentra la CRL por la extensión `crlDistributionPoints` **del
-certificado que está comprobando**. Los certificados ya emitidos no la llevan,
-y no se les puede añadir sin reemitirlos (cambiaría la firma). Mismo aviso que
-con las listas: *esto no publica solo, hay que reemitir*. La consola debería
-listar qué certificados vivos están "fuera de cobertura" por no tener CDP.
+Ofrecer revocación y ser revocable son cosas distintas. Lo primero es la regla
+de esta nota y no necesita jerarquía. Lo segundo sí: para anular una CA hace
+falta otra por encima, es decir **sub-CAs** (`mint-ca --issuer <raíz>`), que hoy
+no se pueden emitir porque `mintCa` siempre autofirma.
+
+Y hay un detalle que muerde: `mintCa` emite `BasicConstraints(CA:TRUE, pathLen:
+0)`, y `pathLen 0` **prohíbe cualquier CA por debajo**. Comprobado con OpenSSL
+sobre una jerarquía de tres niveles: `error 25 at 2 depth: path length
+constraint exceeded`. Una raíz destinada a emitir sub-CAs tiene que salir con
+`pathLen: 1`, y eso **se decide al crearla**: cambiarlo después es reemitir el
+ancla, o sea invalidar todo lo que cuelga de ella.
+
+Para una raíz autofirmada no hay nada que hacer: su retirada es la de la §1,
+desaparecer de la lista (LoTE) o pasar a `deprecated` (AV TL). Por eso esto
+queda como opción —útil para montar el caso "la wallet acepta una cadena cuya
+intermedia está revocada"— y no como parte de la regla.
+
+### 3.7 Lo ya emitido no lleva `CDP`: hay que reemitirlo
+
+No se le puede añadir sin reemitirlo, porque cambiaría la firma. Mismo aviso
+que con las listas: *esto no publica solo*. La consola debería listar qué
+certificados vivos están **fuera de cobertura**, que es una pregunta que sólo
+se puede contestar mirando la extensión de cada uno.
 
 ## 4. Viabilidad: verificada, no supuesta
 
@@ -245,8 +309,11 @@ tenga.
 
 **Operaciones** (`packages/ops`), todas con la misma forma que las de status:
 
-- `createCrl(store, { id, issuerKey, url, validityDays })` — se crea sola al
-  emitir una CA, o a mano para una CA importada.
+- `createCrl(store, { id, issuerKey, url, validityDays })` — **la llama
+  `mintKey` al emitir cualquier CA**, no el operador. Que exista es parte de
+  ser una CA (§3.1); dejarlo como paso manual reintroduce por la puerta de
+  atrás la CA sin revocación que la regla quiere eliminar. A mano sólo para una
+  CA importada con su clave.
 - `revokeCert(store, { caId, name | serial, reason, note })` — resuelve el
   serial desde la clave si se da el nombre; **no publica**.
 - `buildCrl(store, crypto, { id })` — incrementa `crlNumber`, firma con
@@ -260,6 +327,12 @@ tenga.
 **Emisión con CDP**: `mintLeaf`, `mintRoleSigner` y `mintWrpac` reciben el
 `crlUri` del documento CRL de su CA. Sin CDP el consumidor no encuentra la
 lista y —esto está medido en EUDIPLO— **da el certificado por bueno**.
+
+**Estado del marco** (`apps/console/readiness.mjs`): la pantalla de estado ya
+contesta "qué le falta a este despliegue". Con esta regla gana dos preguntas
+más, que son las que hacen que "todas las CAs" no dependa de que alguien se
+acuerde: **¿hay alguna CA sin CRL publicada?** y **¿hay certificados vivos sin
+`CDP`?** (§3.7). Las dos se contestan recorriendo el almacén, no un checklist.
 
 **Publisher**: `KIND_OF['x509-crl'] = 'crl'`, `ROUTES.crl` con
 `application/pkix-crl`, cuerpo binario, `Cache-Control` acotado por
@@ -280,6 +353,30 @@ CRL es un nodo propio con arista a su CA, como las status lists.
 (revocar → reemitir → comprobar), y **contraste con OpenSSL en CI** — está en
 los runners de GitHub y en el contenedor, y es para la CRL lo que "todo lo
 firmado se relee" es para el resto: un tercero que no comparte nuestro código.
+
+### 6.1 Y las listas lo declaran
+
+Que cada CA ofrezca revocación se queda en casa si no se **publica** dónde. Los
+anexos de TS 119 602 definen para cada tipo de lista un segundo tipo de
+servicio, `…/Revocation`, *«a service providing validity status information»*,
+y la cláusula 6.6.7 da el sitio donde va la URI: el `ServiceSupplyPoint`. Hasta
+ahora `buildLote` sólo emitía el servicio de emisión, y con razón — no había
+ningún servicio de estado que declarar. Con la regla de esta nota, sí lo hay:
+
+| Lista | Servicio de revocación | A qué apunta su supply point | Identidad digital del servicio |
+|---|---|---|---|
+| WRPAC providers (anexo F) | `…/SvcType/WRPAC/Revocation` | la **CRL** de la Access CA | el certificado de la CA, que es quien firma la CRL |
+| WRPRC providers (anexo G) | `…/SvcType/WRPRC/Revocation` | la **status list** del emisor | el certificado del firmante de la status list |
+| PID providers (anexo D) | `…/SvcType/PID/Revocation` | el estado de los PID, que **no** emitimos | — (no se declara) |
+| PubEAA (anexo H) | `…/SvcType/PubEAA/Revocation` | el estado de las atestaciones, si algún día se emiten con una | — (no se declara) |
+| AV Trusted List (XML) | no hay tipo de servicio aparte | tabla I.3: `Service supply points` sin requisitos adicionales → cabe la **CRL de la IACA**, que en AV es el único estado que existe (la atestación de edad no lleva status list) | — |
+
+Dos consecuencias que conviene ver juntas: para el **WRPRC** el servicio ya
+existía y sólo faltaba declararlo —el `{uri, idx}` viaja dentro del propio
+certificado, así que declararlo es redundante para quien ya lo tiene y útil
+para quien mira la lista—, y para el **WRPAC** no se podía declarar porque no
+había CRL. Es decir que esta pieza no es trabajo nuevo: es el hueco que dejó
+documentado `packages/lote` cerrándose solo en cuanto existe la §3.1.
 
 ## 7. La CRL como banco de pruebas
 
@@ -331,13 +428,27 @@ demostrado— encontrar defectos como estos antes de que importen.
 
 ## 9. Plan por fases
 
-| Fase | Qué | Por qué en ese orden | Esfuerzo |
+El reparto **no** es por CAs. La maquinaria es genérica —lo único que cambia
+entre una CRL y otra es qué clave la firma—, así que hacerla para la Access CA
+y luego "extenderla" a las demás sería trabajo inventado, y por el camino
+dejaría un despliegue con unas CAs que revocan y otras que no. Las fases son
+por **capas**, y la primera ya deja a todas las CAs del marco ofreciendo
+revocación.
+
+| Fase | Qué | Por qué | Esfuerzo |
 |---|---|---|---|
-| **F1** | CRL de la Access CA + CDP en los WRPAC + publisher + CLI + tests con OpenSSL | Es la única con base normativa dura (TS 119 411-8) y consumidor externo real: la wallet | ~½ jornada |
-| **F2** | Extender a todas las CAs: DS de mdoc bajo IACA, firmantes de credenciales, `mint-ca --issuer` con `pathLen`, etiqueta *no revocable* en los autofirmados | Es la regla de la §0 completa | ~½ jornada |
-| **F3** | Estados de servicio: `deprecated` en la AV TL y `withdrawn` en `pubeaa-lab`, preservando `status` en `setProviders` (+ `ServiceHistory` en el XML) | Cierra la revocación de anclas en las dos listas que la expresan con un estado en vez de con una baja | ~2 h |
-| **F4** | Nombrar "quitar de la lista" como revocación en la consola; declarar el servicio `…/WRPAC/Revocation` con su `ServiceSupplyPoint` apuntando a la CRL | Hasta ahora no se emitía porque no había nada real que declarar; con F1 ya lo hay | ~1 h |
-| **F5** | Los casos torcidos de la §7 como material de laboratorio | Es donde está el valor de medida | ~½ jornada |
+| **F1** | La maquinaria por CA: documento `x509-crl` creado por `mintKey`, `revokeCert` / `buildCrl` / `checkRevoked`, `CDP` impuesto por la CA en `mintLeaf` / `mintRoleSigner` / `mintWrpac`, ruta en el publisher, comandos de CLI y sección en la consola. Tests unitarios, e2e y contraste con OpenSSL | Es la regla de la §0, entera. Vale igual para la Access CA, para las tres IACA y para cualquier CA que se cree mañana, porque nada de esto es específico de un rol | ~1 jornada |
+| **F2** | Reemitir el material vivo para que salga con `CDP`, y la pregunta *"¿qué hay fuera de cobertura?"* en la pantalla de estado | Sin esto, F1 cubre lo que se emita a partir de ahora y deja el pasado invisible (§3.7) | ~2 h |
+| **F3** | Declarar el servicio `…/Revocation` con su `ServiceSupplyPoint` en las listas de WRPAC y WRPRC (§6.1) | Es lo que hace que la revocación sea **descubrible** desde la lista y no sólo desde el certificado | ~2 h |
+| **F4** | Estados de servicio: `deprecated` en la AV TL y `withdrawn` en `pubeaa-lab`, preservando `status` en `setProviders` (+ `ServiceHistory` en el XML) | Cierra la revocación de anclas en las dos listas que la expresan con un estado en vez de con una baja | ~2 h |
+| **F5** | Los casos torcidos de la §7 como material de laboratorio | Es donde está el valor de medida: distinguir "implementa CRL" de "comprueba revocación" | ~½ jornada |
+| **F6** (opcional) | Sub-CAs: `mint-ca --issuer` y `--path-len`, para poder revocar una CA entera (§3.6) | Sólo hace falta para el escenario "la wallet acepta una cadena con la intermedia revocada". No es parte de la regla | ~3 h |
+
+Dentro de F1, el orden natural es Access CA primero **como banco de pruebas del
+código**, no como alcance: es la que tiene consumidor externo real (la wallet
+comprueba el access certificate) y la que da el primer resultado medible. Pero
+F1 no se da por hecha hasta que las CAs del despliegue —Access CA e IACAs—
+publican su CRL.
 
 ## 10. Fuera de alcance, y por qué
 

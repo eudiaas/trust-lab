@@ -290,10 +290,15 @@ revocación: una lista que crece filtra cuántos certificados hay vivos.
 
 Eso cubre **una** de las tres formas de revocar que hay en juego. Las anclas de
 una lista se revocan quitándolas de ella (o marcándolas `deprecated`, en la AV
-TL), y los certificados X.509 —access certificates, Document Signers, firmantes—
-se revocarían por **CRL**, que todavía no existe. El análisis completo, con lo
-que dice cada norma, el inventario certificado a certificado y el plan por
-fases, está en [`REVOCACION.md`](REVOCACION.md).
+TL), y los certificados X.509 —access certificates, Document Signers,
+firmantes— por **CRL**, que todavía no existe: hoy ninguna CA del laboratorio
+ofrece servicio de revocación de lo que emite.
+
+[`REVOCACION.md`](REVOCACION.md) es la nota de diseño que lo cierra: qué dice
+cada norma, el inventario CA por CA, y la regla que se propone — **toda CA del
+marco publica su CRL desde que nace, y toda hoja sale con su `CDP`**. Incluye la
+prueba de viabilidad contra OpenSSL y dos defectos que la prueba ya encontró en
+el lado consumidor.
 
 ## v1.1.1 contra v1.2.1: seis cambios que rompen
 

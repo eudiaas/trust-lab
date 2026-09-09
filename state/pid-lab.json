@@ -2,7 +2,7 @@
   "id": "pid-lab",
   "kind": "lote-json",
   "loteType": "EUPIDProvidersList",
-  "url": "https://trust-lab.espuni.com/lists/pid-lab.json",
+  "url": "https://trust-lab.espuni.com/lote/pid-lab.jwt",
   "lang": "en",
   "schemeOperatorName": "espuni Trust Lab",
   "schemeName": "Trust Lab list of PID providers (TEST)",

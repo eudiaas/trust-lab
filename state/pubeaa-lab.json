@@ -2,7 +2,7 @@
   "id": "pubeaa-lab",
   "kind": "lote-json",
   "loteType": "EUPubEAAProvidersList",
-  "url": "https://trust-lab.espuni.com/lists/pubeaa-lab.json",
+  "url": "https://trust-lab.espuni.com/lote/pubeaa-lab.jwt",
   "lang": "en",
   "schemeOperatorName": "espuni Trust Lab",
   "schemeName": "Trust Lab list of public body EAA providers (TEST)",

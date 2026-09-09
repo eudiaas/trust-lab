@@ -245,11 +245,11 @@ $T mint-signer wallet-ca wia-signer wia "C=ES, O=Lab Wallet Provider, CN=Lab WIA
 $T mint-signer wallet-ca ka-signer key-attestation "C=ES, O=Lab Wallet Provider, CN=Lab KA Signer 01"
 
 # Acceso: la CA es obligatoria, es quien firma los access certificates
-$T mint-ca     wrpac-ca "C=ES, O=Lab Access CA, CN=Lab WRPAC Issuing CA"
+$T mint-ca     wrpac-ca "C=ES, O=Lab Access Certificate Provider, CN=Lab WRPAC Issuing CA"
 
 # Registro: aquí la CA también es opcional; con "-" saldría autofirmado
-$T mint-ca     wrprc-ca "C=ES, O=Lab RC Provider, CN=Lab WRPRC Issuing CA"
-$T mint-signer wrprc-ca wrprc-signer wrprc "C=ES, O=Lab RC Provider, CN=Lab WRPRC Signer 01"
+$T mint-ca     wrprc-ca "C=ES, O=Lab Registration Certificate Provider, CN=Lab WRPRC Issuing CA"
+$T mint-signer wrprc-ca wrprc-signer wrprc "C=ES, O=Lab Registration Certificate Provider, CN=Lab WRPRC Signer 01"
 ```
 
 > Consola: **Claves → CA / hoja** para las CAs, **Claves → Firmante de
@@ -320,7 +320,7 @@ algo tiene que firmar un X.509 (`wrpac-lab`) o cuando el formato de la
 credencial exige jerarquía (mdoc)**. En los demás casos es opcional y no aporta.
 
 ```bash
-node apps/cli/index.mjs mint-signer - wrprc-solo wrprc "C=ES, O=Lab RC Provider, CN=Firmante"
+node apps/cli/index.mjs mint-signer - wrprc-solo wrprc "C=ES, O=Lab Registration Certificate Provider, CN=Firmante"
 ```
 
 El `-` en lugar de la CA lo emite autofirmado; con un rol que exige CA, falla y
@@ -481,15 +481,37 @@ mal en los cuatro puntos, así que se fijan a mano.
 
 ```bash
 curl -s https://<publisher>/                      # índice de lo publicado
-curl -sI https://<publisher>/lists/av-lab.xml     # Content-Type correcto
+curl -sI https://<publisher>/lists/av-lab.xml     # application/vnd.etsi.tsl+xml
+curl -sI https://<publisher>/lote/pid-lab.jwt     # application/jwt
 curl -s -X POST https://<publisher>/lists/av-lab.xml   # 405: nunca escribe
 ```
 
-⚠ **La URL viaja dentro de lo firmado**: el `sub` de la status list, el puntero
-de la AV TL a sí misma, el `status.status_list.uri` de cada WRPRC. Si vas a
-servir en un dominio distinto de `trust-lab.espuni.com`, **edita el campo `url`
-de cada documento antes de emitir nada**. Cambiarlo después no arregla lo ya
-firmado: hay que reemitir.
+**Dos carriles, y la extensión dice la verdad.** `/lists/` es el carril del XML
+(la AV TL, `.xml`) y `/lote/` el del JWS compacto (las cinco LoTE, `.jwt`). Una
+LoTE **no es JSON servible**: es un JWS que lleva JSON dentro, así que anunciarla
+como `.json` era prometer algo que no parsea. La ruta declarada es literal —no
+hay alias por extensión—, así que pedir `/lists/pid-lab.json` hoy devuelve 404,
+no la lista.
+
+> No confundir con la consola: ahí `/lists/<id>` es la **página** para editar el
+> contenido de cualquier lista, LoTE incluidas. Es otro servicio y otro espacio
+> de nombres.
+
+⚠ **Qué URL viaja dentro de lo firmado, y qué no.** No es todo, y la diferencia
+decide lo que cuesta cambiar de dominio:
+
+| Artefacto | ¿Lleva su URL dentro? | Renombrar cuesta |
+|---|---|---|
+| AV TL (`av-lab`) | **sí** — el puntero a sí misma | reemitir |
+| status list | **sí** — el `sub` | reemitir la lista **y** los WRPRC que apunten a ella |
+| WRPRC | **sí** — `status.status_list.uri` | reemitir el certificado |
+| las cinco LoTE | **no** — sólo `SchemeInformationURI` | nada: es editar el `url` del estado |
+
+Así que si vas a servir en un dominio distinto de `trust-lab.espuni.com`, **edita
+el campo `url` de cada documento antes de emitir nada**. Para las LoTE se puede
+arreglar después —el publisher lee la ruta del estado en vivo, así que se mueve
+sin reemitir y sin reiniciar—; para las otras tres, cambiarlo después no arregla
+lo ya firmado.
 
 ### 5.5 Dar de alta una relying party
 

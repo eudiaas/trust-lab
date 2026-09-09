@@ -2,7 +2,7 @@
   "id": "wrpac-lab",
   "kind": "lote-json",
   "loteType": "EUWRPACProvidersList",
-  "url": "https://trust-lab.espuni.com/lists/wrpac-lab.json",
+  "url": "https://trust-lab.espuni.com/lote/wrpac-lab.jwt",
   "lang": "en",
   "schemeOperatorName": "espuni Trust Lab",
   "schemeName": "Trust Lab list of providers of wallet-relying party access certificates (TEST)",

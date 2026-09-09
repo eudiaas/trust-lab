@@ -24,7 +24,7 @@ Y una lista LoTE (JSON en un JWS) — aquí, la de proveedores de certificados d
 acceso, que es la que ninguna herramienta existente sabía emitir:
 
 ```bash
-node apps/cli/index.mjs mint-ca     wrpac-ca-1 "C=ES, O=Lab Access CA, CN=Lab WRPAC Issuing CA"
+node apps/cli/index.mjs mint-ca     wrpac-ca-1 "C=ES, O=Lab Access Certificate Provider, CN=Lab WRPAC Issuing CA"
 node apps/cli/index.mjs add-entity  wrpac-lab wrpac-ca-1 "Lab Access Certificate Provider"
 node apps/cli/index.mjs build-lote  wrpac-lab tl-signer
 ```

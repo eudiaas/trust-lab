@@ -895,6 +895,109 @@ tiene que aguantar eso, que es justo lo que comprueban los perfiles de §5.2.
 
 Los dos se sacan con `export-key` / `export` (§7) y se cargan en EUDIPLO.
 
+### El wallet provider: quién firma la Wallet Instance Attestation
+
+`wallet-lab` es la única de las seis listas que **no mira hacia la wallet**: la
+consume el emisor. Cuando la wallet pide una credencial por OID4VCI presenta una
+**Wallet Instance Attestation** como client attestation, y el emisor —EUDIPLO,
+por el campo `walletProviderTrustLists` de su configuración de emisión— valida el
+`x5c` de esa WIA contra las anclas de `wallet-lab`.
+
+Para que ese lazo cierre hace falta que alguien **emita** la WIA firmando con el
+`wia-signer` del laboratorio. Ese alguien es el servicio de wallet provider de la
+implementación de referencia, `eu-digital-identity-wallet/eudi-srv-wallet-provider`.
+
+> **Es un mock, y lo dice él.** Su propio README avisa en mayúsculas de que está
+> hecho *strictly for testing and development*, que por defecto **no valida
+> ninguna platform key attestation** y que no es production-grade. Para el
+> laboratorio es exactamente lo que queremos —la WIA firmada con nuestra clave, y
+> ninguna comprobación de integridad de dispositivo por medio—; para cualquier
+> otra cosa, no.
+
+**Habla el protocolo de la app EUDI sin adaptador.** El servicio expone
+`POST /wallet-instance-attestation/jwk` y `POST /key-attestation/jwk-set`, con
+`{jwk}` → `{walletInstanceAttestation}` y `{nonce, jwkSet}` → `{keyAttestation}`,
+que es literalmente lo que la app EUDI llama y lee. (La app **AV** llama a
+`/wallet-unit-attestation/jwk-set`, que este servicio no expone: las dos apps han
+divergido y sólo la EUDI casa con el servicio de referencia. Es una razón más
+para trabajar con la EUDI.)
+
+#### 1. Sacar la clave del laboratorio
+
+El servicio carga la clave y su cadena de un keystore, así que hay que convertir
+el bundle PEM que exporta la consola:
+
+```bash
+$T export-key wia-signer bundle out/          # PKCS8 + cadena, 0600
+openssl pkcs12 -export \
+  -in out/wia-signer.pem -inkey out/wia-signer.pem \
+  -name wia-signer -out out/wia-signer.p12 -passout pass:<contraseña>
+```
+
+Comprobar que quedó bien antes de subirlo a ningún sitio:
+
+```bash
+keytool -list -v -keystore out/wia-signer.p12 -storetype PKCS12 -storepass <contraseña>
+# Entry type: PrivateKeyEntry · Certificate chain length: 1 (o 2 con CA)
+# Signature algorithm name: SHA256withECDSA
+```
+
+Sirven las dos formas del §5.2, y por una razón que conviene saber: el servicio
+aplica `dropRootCaIfNeeded()`, que **quita el último certificado de la cadena si
+es autofirmado**. Con el firmante autofirmado la cadena es de uno y no se toca;
+colgando de `wallet-ca` la cadena es de dos y se cae la raíz. En los dos casos el
+`x5c` de la WIA acaba llevando **la hoja**, que es justo el certificado que
+`wallet-lab` publica por el anexo E. Encajan igual.
+
+#### 2. Configurar el servicio
+
+Lo mínimo, con los nombres exactos de sus variables:
+
+| Variable | Valor |
+|---|---|
+| `SIGNINGKEY_KEYSTOREFILE` | ruta del `.p12` |
+| `SIGNINGKEY_KEYSTORETYPE` | `PKCS12` (su default es `JKS`) |
+| `SIGNINGKEY_KEYSTOREPASSWORD` · `SIGNINGKEY_KEYPASSWORD` | la contraseña |
+| `SIGNINGKEY_KEYALIAS` | `wia-signer` |
+| `SIGNINGKEY_ALGORITHM` | `ES256` — el laboratorio emite P-256 |
+| `DATABASE_URL` | R2DBC; lleva migraciones para PostgreSQL y MySQL |
+| `ISSUER_PUBLICURL` | la URL pública del servicio; va como `iss` de las atestaciones |
+| `ISSUER_NAME` | nombre legible del proveedor |
+| `WALLETINSTANCEATTESTATION_WALLETNAME` · `_WALLETVERSION` | lo que quieras que viaje dentro |
+
+No hay forma de pasarle la clave en línea: `SIGNINGKEY_KEYSTOREFILE` es una
+**ruta de fichero**, así que el keystore tiene que existir en el disco del
+proceso. Con eso hay que contar al desplegarlo.
+
+#### 3. Apuntar la app y el emisor
+
+- **La app**: `walletProviderHost` en `WalletCoreConfigImpl`, junto a las cuatro
+  URLs de listas. Es **compile-time** como ellas, así que entra en el mismo
+  rebuild — no añade uno nuevo.
+- **EUDIPLO**: `walletProviderTrustLists` de la configuración de emisión,
+  apuntando a la URL de `wallet-lab` con el firmante pineado.
+
+Y la comprobación que cierra el lazo, en la línea del §5.7: el **último
+certificado del `x5c`** de una WIA emitida tiene que ser, byte a byte, el
+`issuanceCertPem` de la entrada de `wallet-lab`. Si no coinciden, EUDIPLO
+rechazará la atestación aunque la firma sea válida.
+
+> **Ojo con el fail-open del otro lado**: si a la configuración de emisión no se
+> le pone ninguna lista, EUDIPLO registra *«No wallet provider trust lists
+> configured - accepting attestation without certificate validation»* y acepta.
+> Que el lazo "funcione" sin haber configurado nada no significa que esté
+> cerrado; significa que no se está comprobando.
+
+#### Lo que falta resolver para desplegarlo
+
+El repositorio **no trae Dockerfile**: la imagen se construye con **Jib**
+(`eclipse-temurin:<java>-jre` de base), y hay imágenes publicadas en el ghcr del
+proyecto. Así que un despliegue tiene tres caminos —desplegar la imagen publicada,
+añadir un Dockerfile al fork, o publicar la imagen del fork por su propio CI— y
+la elección no es indiferente, porque además hay que resolver **cómo llega el
+`.p12` al disco del contenedor** sin hornearlo en la imagen. Eso pertenece al
+repositorio de ese servicio, no a éste.
+
 ---
 
 ## 9. Referencia

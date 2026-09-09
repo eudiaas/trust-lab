@@ -133,12 +133,6 @@ Dos comprobaciones corren en cada `build-list` y **abortan la emisión** si fall
 No son decorativas: firmar la lista con una CA normal, o cambiar un URI del
 perfil AV, aborta la emisión con el detalle en pantalla.
 
-### Las cuatro suites
-
-```bash
-npm test
-```
-
 ### Las seis suites
 
 ```bash
@@ -293,6 +287,13 @@ node apps/cli/index.mjs status-check status-wrprc 7 tl-signer   # → invalid
 
 La lista se reserva entera de golpe (1024 posiciones) en vez de crecer con cada
 revocación: una lista que crece filtra cuántos certificados hay vivos.
+
+Eso cubre **una** de las tres formas de revocar que hay en juego. Las anclas de
+una lista se revocan quitándolas de ella (o marcándolas `deprecated`, en la AV
+TL), y los certificados X.509 —access certificates, Document Signers, firmantes—
+se revocarían por **CRL**, que todavía no existe. El análisis completo, con lo
+que dice cada norma, el inventario certificado a certificado y el plan por
+fases, está en [`REVOCACION.md`](REVOCACION.md).
 
 ## v1.1.1 contra v1.2.1: seis cambios que rompen
 
